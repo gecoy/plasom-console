@@ -705,6 +705,26 @@ export function TicketsTab({ project }: Props) {
   const [calDate, setCalDate] = useState(new Date(2026, 10, 1)); // พฤศจิกายน 2026
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
 
+  // Calendar Box Height Sync (ล็อกความสูงกล่องปฏิทินฝั่งซ้ายและขวาให้เท่ากันตลอดเวลา)
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const [calendarHeight, setCalendarHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const el = calendarRef.current;
+    if (!el) return;
+    const updateHeight = () => {
+      if (el.offsetHeight > 0) {
+        setCalendarHeight(el.offsetHeight);
+      }
+    };
+    updateHeight();
+    const observer = new ResizeObserver(() => {
+      updateHeight();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeView, calDate, selectedCalDay]);
+
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
@@ -1208,6 +1228,8 @@ export function TicketsTab({ project }: Props) {
   const calMonth = calDate.getMonth();
   const calDaysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
   const calFirstDayOfWeek = new Date(calYear, calMonth, 1).getDay(); // 0 = Sun
+  const calTotalCells = Math.ceil((calFirstDayOfWeek + calDaysInMonth) / 7) * 7;
+  const calTrailingDays = calTotalCells - (calFirstDayOfWeek + calDaysInMonth);
 
   const monthThaiNames = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
@@ -1300,57 +1322,66 @@ export function TicketsTab({ project }: Props) {
         </div>
       </div>
 
-      {/* Clickable KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {[
-          { id: 'ALL' as const, label: 'ใบงานทั้งหมด', count: projectTickets.length, color: 'text-white' },
-          {
-            id: 'PENDING' as const,
-            label: 'รอดำเนินการ',
-            count: projectTickets.filter((t) => t.status === 'PENDING').length,
-            color: 'text-slate-300',
-          },
-          {
-            id: 'ASSIGNED' as const,
-            label: 'มอบหมายช่างแล้ว',
-            count: projectTickets.filter((t) => t.status === 'ASSIGNED').length,
-            color: 'text-blue-400',
-          },
-          {
-            id: 'IN_PROGRESS' as const,
-            label: 'กำลังดำเนินการ',
-            count: projectTickets.filter((t) => t.status === 'IN_PROGRESS').length,
-            color: 'text-amber-400',
-          },
-          {
-            id: 'COMPLETED' as const,
-            label: 'ปิดงานเรียบร้อย',
-            count: projectTickets.filter((t) => t.status === 'COMPLETED').length,
-            color: 'text-emerald-400',
-          },
-        ].map((stat) => {
-          const isActive = statusFilter === stat.id;
-          return (
-            <div
-              key={stat.id}
-              onClick={() => {
-                setStatusFilter(stat.id);
-                setCurrentPage(1);
-              }}
-              className={`p-4 rounded-2xl bg-[#111827] border cursor-pointer transition-all ${isActive
-                ? 'border-orange-500 ring-2 ring-orange-500/40 bg-[#162032]'
-                : 'border-slate-800 hover:border-slate-700'
-                }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-400">{stat.label}</span>
-                {isActive && <span className="text-[10px] text-orange-400 font-bold">กำลังกรอง</span>}
+      {/* Clickable KPI Cards — Unified Container */}
+      <div className="bg-[#111827] border border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+        <div className="grid grid-cols-2 lg:grid-cols-5 divide-x divide-y lg:divide-y-0 divide-slate-800/80">
+          {[
+            { id: 'ALL' as const, label: 'ใบงานทั้งหมด', count: projectTickets.length, color: 'text-white', dotColor: '#F97316' },
+            {
+              id: 'PENDING' as const,
+              label: 'รอดำเนินการ',
+              count: projectTickets.filter((t) => t.status === 'PENDING').length,
+              color: 'text-slate-300',
+              dotColor: '#94A3B8',
+            },
+            {
+              id: 'ASSIGNED' as const,
+              label: 'มอบหมายช่างแล้ว',
+              count: projectTickets.filter((t) => t.status === 'ASSIGNED').length,
+              color: 'text-blue-400',
+              dotColor: '#60A5FA',
+            },
+            {
+              id: 'IN_PROGRESS' as const,
+              label: 'กำลังดำเนินการ',
+              count: projectTickets.filter((t) => t.status === 'IN_PROGRESS').length,
+              color: 'text-amber-400',
+              dotColor: '#FBBF24',
+            },
+            {
+              id: 'COMPLETED' as const,
+              label: 'ปิดงานเรียบร้อย',
+              count: projectTickets.filter((t) => t.status === 'COMPLETED').length,
+              color: 'text-emerald-400',
+              dotColor: '#34D399',
+            },
+          ].map((stat) => {
+            const isActive = statusFilter === stat.id;
+            return (
+              <div
+                key={stat.id}
+                onClick={() => {
+                  setStatusFilter(stat.id);
+                  setCurrentPage(1);
+                }}
+                className={`p-4 cursor-pointer transition-all ${isActive
+                  ? 'bg-[#162032] ring-inset ring-2 ring-orange-500/40'
+                  : 'hover:bg-slate-800/30'
+                  }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                    <span style={{ backgroundColor: stat.dotColor }} className="w-2 h-2 rounded-full shrink-0" />
+                    {stat.label}
+                  </span>
+                  {isActive && <span className="text-[10px] text-orange-400 font-bold">กำลังกรอง</span>}
+                </div>
+                <div className={`mt-2 text-2xl font-bold font-mono tracking-tight ${stat.color}`}>{stat.count}</div>
+                <div className="mt-1 text-[10px] text-slate-500">คลิกเพื่อกรองสถานะนี้</div>
               </div>
-              <div className={`mt-1.5 text-2xl font-bold tracking-tight ${stat.color}`}>{stat.count}</div>
-              <div className="mt-1 text-[11px] text-slate-500">คลิกเพื่อกรองสถานะนี้</div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Toolbar: View Switcher, Search & Filters */}
@@ -2155,9 +2186,12 @@ export function TicketsTab({ project }: Props) {
           </div>
 
           {/* Calendar Layout: Full width by default, 70/30 split when a day is selected */}
-          <div className="flex gap-4 items-start">
+          <div className="flex gap-4 items-stretch">
             {/* Calendar Grid: w-full when panel closed, w-[70%] when panel open */}
-            <div className={`${isPanelOpen ? 'w-[70%]' : 'w-full'} min-w-0 border border-slate-800 rounded-xl overflow-hidden bg-[#0b0f19] transition-all duration-200`}>
+            <div
+              ref={calendarRef}
+              className={`${isPanelOpen ? 'w-[70%]' : 'w-full'} min-w-0 border border-slate-800 rounded-xl overflow-hidden bg-[#0b0f19] transition-all duration-200`}
+            >
               {/* Weekday Row */}
               <div className="grid grid-cols-7 border-b border-slate-800 bg-[#0f172a] text-center text-xs font-bold text-slate-300 py-2.5">
                 <span className="text-red-400">อา</span>
@@ -2169,11 +2203,14 @@ export function TicketsTab({ project }: Props) {
                 <span className="text-blue-400">ส</span>
               </div>
 
-              {/* Days Cells */}
+              {/* Days Cells (Grid 7 คอลัมน์ ทุก Box มีสัดส่วนสมมาตรทั้งกว้างและยาว aspect-square พร้อมเต็มทุกแถว) */}
               <div className="grid grid-cols-7 divide-x divide-y divide-slate-800/80">
                 {/* Empty leading cells */}
                 {Array.from({ length: calFirstDayOfWeek }).map((_, i) => (
-                  <div key={`empty-cal-${i}`} className="min-h-[80px] p-1.5 bg-[#080c14] opacity-40" />
+                  <div
+                    key={`empty-cal-${i}`}
+                    className="aspect-square p-2 bg-[#080c14]/50 opacity-25 select-none"
+                  />
                 ))}
 
                 {/* Day Cells of the Month */}
@@ -2191,64 +2228,85 @@ export function TicketsTab({ project }: Props) {
                     <div
                       key={dateKey}
                       onClick={() => setSelectedCalDay(isSelected ? null : dateKey)}
-                      className={`min-h-[80px] p-1.5 flex flex-col cursor-pointer transition-all ${
+                      className={`aspect-square p-2 flex flex-col justify-between cursor-pointer transition-all ${
                         isSelected
-                          ? 'bg-orange-500/10 ring-1 ring-inset ring-orange-500/40'
+                          ? 'bg-orange-500/10 ring-2 ring-inset ring-orange-500 shadow-inner'
                           : isToday
-                          ? 'bg-orange-500/5 hover:bg-orange-500/10'
-                          : 'bg-[#0b0f19] hover:bg-slate-900/60'
+                          ? 'bg-orange-500/5 hover:bg-orange-500/15'
+                          : 'bg-[#0b0f19] hover:bg-slate-900/80'
                       }`}
                     >
-                      {/* Date Number */}
-                      <div className="flex items-center justify-between pb-0.5">
+                      {/* Top: Date Number & Count Badge */}
+                      <div className="flex items-center justify-between">
                         <span
                           className={`text-xs font-bold ${
                             isToday
-                              ? 'w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-sm'
+                              ? 'w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-md'
                               : isSelected
-                              ? 'text-orange-300 px-1'
-                              : 'text-slate-400 px-1'
+                              ? 'text-orange-400 font-extrabold px-1'
+                              : 'text-slate-300 px-1'
                           }`}
                         >
                           {dayNum}
                         </span>
                         {dayTickets.length > 0 && (
-                          <span className="text-[9px] text-orange-400 font-bold bg-orange-500/10 px-1 rounded-full border border-orange-500/20">
+                          <span className="text-[10px] text-orange-400 font-bold bg-orange-500/15 px-1.5 py-0.2 rounded-full border border-orange-500/30">
                             {dayTickets.length}
                           </span>
                         )}
                       </div>
 
-                      {/* Compact ticket indicators */}
-                      <div className="space-y-0.5 mt-0.5 flex-1 overflow-hidden">
-                        {dayTickets.slice(0, 3).map((t) => {
+                      {/* Middle: Compact ticket indicators */}
+                      <div className="space-y-1 my-auto overflow-hidden">
+                        {dayTickets.slice(0, 2).map((t) => {
                           const statusDot = STATUS_CONFIG[t.status]?.dotColor || '#F97316';
                           return (
                             <div
                               key={t.id}
-                              className="flex items-center gap-1 text-[9px] leading-tight truncate"
+                              className="flex items-center gap-1.5 text-[10px] leading-tight truncate px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-800"
                             >
                               <span
                                 style={{ backgroundColor: statusDot }}
                                 className="w-1.5 h-1.5 rounded-full shrink-0"
                               />
-                              <span className="text-slate-300 truncate font-medium">{t.trackingCode}</span>
+                              <span className="text-slate-200 truncate font-medium">{t.trackingCode}</span>
                             </div>
                           );
                         })}
-                        {dayTickets.length > 3 && (
-                          <span className="text-[9px] text-slate-500">+{dayTickets.length - 3} อื่นๆ</span>
+                        {dayTickets.length > 2 && (
+                          <div className="text-[9px] text-orange-400/90 font-medium px-1">
+                            +{dayTickets.length - 2} งาน
+                          </div>
                         )}
                       </div>
+
+                      {/* Bottom placeholder to keep layout stable */}
+                      <div className="h-1" />
                     </div>
                   );
                 })}
+
+                {/* Trailing empty cells (เติมเต็ม Box ฝั่งขวาล่างของแถวสุดท้ายให้สมมาตรครบ 7 คอลัมน์) */}
+                {Array.from({ length: calTrailingDays }).map((_, i) => (
+                  <div
+                    key={`empty-trailing-${i}`}
+                    className="aspect-square p-2 bg-[#080c14]/40 opacity-25 select-none flex flex-col justify-between"
+                  >
+                    <span className="text-xs font-semibold text-slate-600 px-1">{i + 1}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* RIGHT: Day Detail Panel — 30% (แสดงเฉพาะเมื่อกดเลือกวัน ไม่ยืดทะลุด้านล่าง) */}
+            {/* RIGHT: Day Detail Panel — 30% (ความสูงล็อกเท่ากับ Box ปฏิทินฝั่งซ้ายตลอดเวลา) */}
             {isPanelOpen && selectedCalDay && (
-              <div className="w-[30%] min-w-[280px] max-h-[520px] xl:max-h-[560px] flex flex-col bg-[#0b0f19] border border-slate-800 rounded-xl overflow-hidden shadow-lg animate-in fade-in slide-in-from-right-3 duration-200">
+              <div
+                style={{
+                  height: calendarHeight ? `${calendarHeight}px` : undefined,
+                  maxHeight: calendarHeight ? `${calendarHeight}px` : undefined,
+                }}
+                className="w-[30%] min-w-[280px] self-stretch flex flex-col bg-[#0b0f19] border border-slate-800 rounded-xl overflow-hidden shadow-lg animate-in fade-in slide-in-from-right-3 duration-200"
+              >
                 {/* Day Detail Header */}
                 <div className="p-4 border-b border-slate-800 bg-[#0f172a] shrink-0">
                   <div className="flex items-start justify-between gap-2">
@@ -2284,7 +2342,7 @@ export function TicketsTab({ project }: Props) {
               {/* Day Tickets List (จำกัดความสูงและเลื่อนดูภายในกล่องได้ ไม่ทะลุลงล่าง) */}
               <div className="flex-1 overflow-y-auto p-3 space-y-2.5 min-h-0">
                 {selectedDayTickets.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center text-center py-10 px-4">
+                  <div className="flex flex-col items-center justify-center text-center py-10 px-4 h-full min-h-[220px]">
                     <CalendarDays className="w-10 h-10 text-slate-700 mb-3" />
                     <p className="text-xs text-slate-500 font-medium">ไม่มีใบงานในวันนี้</p>
                     <p className="text-[10px] text-slate-600 mt-1">คลิกวันที่มีงานบนปฏิทินเพื่อดูรายละเอียด</p>
@@ -2502,24 +2560,6 @@ export function TicketsTab({ project }: Props) {
                   <CalendarIcon className="w-3.5 h-3.5 text-orange-400" />
                   <span>ประจำเดือน พฤศจิกายน 2569</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleExportExcel}
-                  className="px-3 py-2 rounded-xl bg-[#0b0f19] hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
-                  title="ส่งออกรายงาน Excel"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Excel</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportPDF}
-                  className="px-3 py-2 rounded-xl bg-[#0b0f19] hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer transition-colors"
-                  title="พิมพ์รายงาน PDF"
-                >
-                  <Printer className="w-3.5 h-3.5 text-blue-400" />
-                  <span>PDF</span>
-                </button>
               </div>
             </div>
 
@@ -2622,234 +2662,237 @@ export function TicketsTab({ project }: Props) {
               </div>
             </div>
 
-            {/* Row 2: Channel Acquisition & Status Distribution */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Channel Acquisition Card */}
-              <div className="p-5 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-400">
-                      <TrendingUp className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">สถิติช่องทางที่ลูกค้าแจ้งซ่อม (Channel Acquisition)</h4>
-                      <p className="text-[11px] text-slate-400">สัดส่วนและปริมาณงานที่เข้ามาจากแต่ละช่องทางสื่อสาร</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-bold text-orange-400 font-mono">
-                    {totalTickets} ใบงานรวม
-                  </span>
-                </div>
-
-                <div className="space-y-3.5">
-                  {channelStats.map((ch) => {
-                    const percent = totalTickets > 0 ? Math.round((ch.count / totalTickets) * 100) : 0;
-                    return (
-                      <div key={ch.name} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-white flex items-center gap-2">
-                            <span className={`w-2 h-2 rounded-full ${ch.color}`} />
-                            {ch.name}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-400 text-[11px] font-mono">{ch.count} งาน</span>
-                            <span className={`font-bold font-mono ${ch.textColor}`}>{percent}%</span>
-                          </div>
-                        </div>
-                        <div className="w-full h-2.5 rounded-full bg-slate-800/80 overflow-hidden p-0.5">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${ch.color}`}
-                            style={{ width: `${percent}%` }}
-                          />
-                        </div>
+            {/* Unified Analytics Insights Section (รวมทั้ง 4 หมวดเป็น Section เดียวกัน) */}
+            <div className="bg-[#111827] border border-slate-800 rounded-2xl shadow-sm overflow-hidden divide-y divide-slate-800">
+              {/* Row 1: Channel Acquisition (Left) & Ticket Status Pipeline (Right) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+                {/* 1. Channel Acquisition */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-400">
+                        <TrendingUp className="w-4 h-4" />
                       </div>
-                    );
-                  })}
-                </div>
-
-                <div className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800 text-xs text-slate-300 flex items-start gap-2.5">
-                  <Sparkles className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                  <div className="text-[11px] leading-relaxed">
-                    <strong className="text-orange-300">ข้อสังเกตจาก AI:</strong> ช่องทาง LINE OA มีสัดส่วนงานสูงสุด ระบบแชทบอทสามารถรับเรื่องและจ่ายงานอัตโนมัติได้อย่างมีประสิทธิภาพ ช่วยประหยัดเวลาแอดมินได้กว่า 65%
-                  </div>
-                </div>
-              </div>
-
-              {/* Ticket Status Pipeline Card */}
-              <div className="p-5 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
-                      <Layers className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">สัดส่วนสถานะการดำเนินงาน (Ticket Pipeline)</h4>
-                      <p className="text-[11px] text-slate-400">การกระจายตัวของใบงานตามกระบวนการทำงานในระบบ</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveView('table')}
-                    className="text-xs text-orange-400 hover:underline font-semibold cursor-pointer flex items-center gap-1"
-                  >
-                    <span>ดูตารางงาน</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-
-                <div className="space-y-2.5 text-xs">
-                  {[
-                    { label: 'ปิดงานเรียบร้อย', count: completedTickets.length, cfg: STATUS_CONFIG.COMPLETED },
-                    { label: 'กำลังดำเนินการ', count: inProgressTickets.length, cfg: STATUS_CONFIG.IN_PROGRESS },
-                    { label: 'มอบหมายช่างแล้ว', count: assignedTickets.length, cfg: STATUS_CONFIG.ASSIGNED },
-                    { label: 'รอดำเนินการ', count: pendingTickets.length, cfg: STATUS_CONFIG.PENDING },
-                    { label: 'ยกเลิกใบงาน', count: cancelledTickets.length, cfg: STATUS_CONFIG.CANCELLED },
-                  ].map((item) => {
-                    const pct = totalTickets > 0 ? Math.round((item.count / totalTickets) * 100) : 0;
-                    return (
-                      <div
-                        key={item.label}
-                        onClick={() => {
-                          setStatusFilter(item.label === 'ปิดงานเรียบร้อย' ? 'COMPLETED' : item.label === 'กำลังดำเนินการ' ? 'IN_PROGRESS' : item.label === 'มอบหมายช่างแล้ว' ? 'ASSIGNED' : item.label === 'รอดำเนินการ' ? 'PENDING' : 'CANCELLED');
-                          setActiveView('table');
-                        }}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-[#0b0f19] hover:bg-slate-800/60 border border-slate-800 transition-colors cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            style={{ backgroundColor: item.cfg.dotColor }}
-                            className="w-2 h-2 rounded-full"
-                          />
-                          <span className="font-medium text-slate-300 group-hover:text-white transition-colors">{item.label}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-slate-500 font-mono">{pct}%</span>
-                          <span
-                            style={{
-                              backgroundColor: item.cfg.bgColor,
-                              color: item.cfg.textColor,
-                              borderRadius: '999px',
-                              padding: '2px 8px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                            }}
-                            className="font-mono"
-                          >
-                            {item.count} งาน
-                          </span>
-                        </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">สถิติช่องทางที่ลูกค้าแจ้งซ่อม (Channel Acquisition)</h4>
+                        <p className="text-[11px] text-slate-400">สัดส่วนและปริมาณงานที่เข้ามาจากแต่ละช่องทางสื่อสาร</p>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Row 3: Leaderboard & Common Issues */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Technician Leaderboard Card */}
-              <div className="p-5 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
-                      <Award className="w-4 h-4" />
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">ทำเนียบผลงานช่างยอดเยี่ยม (Top Technicians)</h4>
-                      <p className="text-[11px] text-slate-400">จัดอันดับตามจำนวนงานที่ปิดสำเร็จและคะแนนความพึงพอใจ</p>
-                    </div>
+                    <span className="text-xs font-bold text-orange-400 font-mono">
+                      {totalTickets} ใบงานรวม
+                    </span>
                   </div>
-                  <span className="text-xs text-slate-400 font-mono">ทั้งหมด {projectTechs.length} คน</span>
-                </div>
 
-                <div className="space-y-2.5">
-                  {projectTechs.slice(0, 4).map((tech, idx) => {
-                    const isAvailable = tech.status === 'AVAILABLE';
-                    const medals = ['🥇', '🥈', '🥉', '🎖️'];
-                    return (
-                      <div
-                        key={tech.id}
-                        className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-sm font-bold shrink-0">
-                            {medals[idx]}
-                          </div>
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
-                            {tech.name.replace(/^ช่าง/, '').trim().charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-                              <span>{tech.name}</span>
-                              <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-full font-medium ${isAvailable ? 'text-emerald-400 bg-emerald-500/10' : 'text-amber-400 bg-amber-500/10'}`}>
-                                <span className={`w-1 h-1 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                                {isAvailable ? 'พร้อมรับงาน' : 'ติดงาน'}
-                              </span>
+                  <div className="space-y-3.5">
+                    {channelStats.map((ch) => {
+                      const percent = totalTickets > 0 ? Math.round((ch.count / totalTickets) * 100) : 0;
+                      return (
+                        <div key={ch.name} className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-white flex items-center gap-2">
+                              <span className={`w-2 h-2 rounded-full ${ch.color}`} />
+                              {ch.name}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-400 text-[11px] font-mono">{ch.count} งาน</span>
+                              <span className={`font-bold font-mono ${ch.textColor}`}>{percent}%</span>
                             </div>
-                            <div className="text-[11px] text-slate-400 truncate">{tech.specialty}</div>
+                          </div>
+                          <div className="w-full h-2.5 rounded-full bg-slate-800/80 overflow-hidden p-0.5">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${ch.color}`}
+                              style={{ width: `${percent}%` }}
+                            />
                           </div>
                         </div>
+                      );
+                    })}
+                  </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="text-xs font-bold text-white font-mono">{42 - idx * 7} งาน</div>
-                          <div className="flex items-center gap-1 text-amber-400 text-[10px] font-semibold mt-0.5 justify-end">
-                            <Star className="w-3 h-3 fill-amber-400" />
-                            <span>{(4.9 - idx * 0.1).toFixed(1)} / 5.0</span>
+                  <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800/80 text-xs text-slate-300 flex items-start gap-2.5">
+                    <Sparkles className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                    <div className="text-[11px] leading-relaxed">
+                      <strong className="text-orange-300">ข้อสังเกตจาก AI:</strong> ช่องทาง LINE OA มีสัดส่วนงานสูงสุด ระบบแชทบอทสามารถรับเรื่องและจ่ายงานอัตโนมัติได้อย่างมีประสิทธิภาพ ช่วยประหยัดเวลาแอดมินได้กว่า 65%
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Ticket Status Pipeline */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                        <Layers className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">สัดส่วนสถานะการดำเนินงาน (Ticket Pipeline)</h4>
+                        <p className="text-[11px] text-slate-400">การกระจายตัวของใบงานตามกระบวนการทำงานในระบบ</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveView('table')}
+                      className="text-xs text-orange-400 hover:underline font-semibold cursor-pointer flex items-center gap-1"
+                    >
+                      <span>ดูตารางงาน</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5 text-xs">
+                    {[
+                      { label: 'ปิดงานเรียบร้อย', count: completedTickets.length, cfg: STATUS_CONFIG.COMPLETED },
+                      { label: 'กำลังดำเนินการ', count: inProgressTickets.length, cfg: STATUS_CONFIG.IN_PROGRESS },
+                      { label: 'มอบหมายช่างแล้ว', count: assignedTickets.length, cfg: STATUS_CONFIG.ASSIGNED },
+                      { label: 'รอดำเนินการ', count: pendingTickets.length, cfg: STATUS_CONFIG.PENDING },
+                      { label: 'ยกเลิกใบงาน', count: cancelledTickets.length, cfg: STATUS_CONFIG.CANCELLED },
+                    ].map((item) => {
+                      const pct = totalTickets > 0 ? Math.round((item.count / totalTickets) * 100) : 0;
+                      return (
+                        <div
+                          key={item.label}
+                          onClick={() => {
+                            setStatusFilter(item.label === 'ปิดงานเรียบร้อย' ? 'COMPLETED' : item.label === 'กำลังดำเนินการ' ? 'IN_PROGRESS' : item.label === 'มอบหมายช่างแล้ว' ? 'ASSIGNED' : item.label === 'รอดำเนินการ' ? 'PENDING' : 'CANCELLED');
+                            setActiveView('table');
+                          }}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-[#0b0f19] hover:bg-slate-800/60 border border-slate-800/80 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              style={{ backgroundColor: item.cfg.dotColor }}
+                              className="w-2 h-2 rounded-full"
+                            />
+                            <span className="font-medium text-slate-300 group-hover:text-white transition-colors">{item.label}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-[11px] text-slate-500 font-mono">{pct}%</span>
+                            <span
+                              style={{
+                                backgroundColor: item.cfg.bgColor,
+                                color: item.cfg.textColor,
+                                borderRadius: '999px',
+                                padding: '2px 8px',
+                                fontSize: '11px',
+                                fontWeight: 700,
+                              }}
+                              className="font-mono"
+                            >
+                              {item.count} งาน
+                            </span>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              {/* Common Issues & Equipment Insights */}
-              <div className="p-5 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-400">
-                      <Wrench className="w-4 h-4" />
+              {/* Row 2: Leaderboard (Left) & Common Issues (Right) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+                {/* 3. Technician Leaderboard */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                        <Award className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">ทำเนียบผลงานช่างยอดเยี่ยม (Top Technicians)</h4>
+                        <p className="text-[11px] text-slate-400">จัดอันดับตามจำนวนงานที่ปิดสำเร็จและคะแนนความพึงพอใจ</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-white">วิเคราะห์ประเภทอาการเสีย & ปัญหาที่พบบ่อย</h4>
-                      <p className="text-[11px] text-slate-400">สถิติอาการแจ้งซ่อมที่พบบ่อยที่สุดในระบบ</p>
-                    </div>
+                    <span className="text-xs text-slate-400 font-mono">ทั้งหมด {projectTechs.length} คน</span>
                   </div>
-                  <span className="text-[11px] text-orange-400 font-semibold bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
-                    ความถี่สูงสุด
-                  </span>
+
+                  <div className="space-y-2.5">
+                    {projectTechs.slice(0, 4).map((tech, idx) => {
+                      const isAvailable = tech.status === 'AVAILABLE';
+                      const medals = ['🥇', '🥈', '🥉', '🎖️'];
+                      return (
+                        <div
+                          key={tech.id}
+                          className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-sm font-bold shrink-0">
+                              {medals[idx]}
+                            </div>
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
+                              {tech.name.replace(/^ช่าง/, '').trim().charAt(0)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                                <span>{tech.name}</span>
+                                <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded-full font-medium ${isAvailable ? 'text-emerald-400 bg-emerald-500/10' : 'text-amber-400 bg-amber-500/10'}`}>
+                                  <span className={`w-1 h-1 rounded-full ${isAvailable ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                                  {isAvailable ? 'พร้อมรับงาน' : 'ติดงาน'}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">{tech.specialty}</div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-bold text-white font-mono">{42 - idx * 7} งาน</div>
+                            <div className="flex items-center gap-1 text-amber-400 text-[10px] font-semibold mt-0.5 justify-end">
+                              <Star className="w-3 h-3 fill-amber-400" />
+                              <span>{(4.9 - idx * 0.1).toFixed(1)} / 5.0</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="space-y-3 text-xs">
-                  {[
-                    { issue: 'แอร์ไม่เย็น / น้ำยาแอร์พร่อง', percent: 45, count: '14 ครั้ง', color: 'bg-orange-500' },
-                    { issue: 'ล้างแอร์ทำความสะอาดประจำรอบ', percent: 28, count: '9 ครั้ง', color: 'bg-blue-500' },
-                    { issue: 'มีน้ำหยด / แอร์เสียงดังผิดปกติ', percent: 18, count: '6 ครั้ง', color: 'bg-emerald-500' },
-                    { issue: 'ตรวจเช็กบอร์ดอินเวอร์เตอร์ & ระบบไฟ', percent: 9, count: '3 ครั้ง', color: 'bg-purple-500' },
-                  ].map((row) => (
-                    <div key={row.issue} className="space-y-1">
-                      <div className="flex justify-between text-slate-300">
-                        <span className="font-medium text-slate-200">{row.issue}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-slate-400 font-mono">{row.count}</span>
-                          <span className="font-bold font-mono text-white">{row.percent}%</span>
+                {/* 4. Common Issues & Equipment Insights */}
+                <div className="p-6 space-y-4">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-orange-500/10 text-orange-400">
+                        <Wrench className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">วิเคราะห์ประเภทอาการเสีย & ปัญหาที่พบบ่อย</h4>
+                        <p className="text-[11px] text-slate-400">สถิติอาการแจ้งซ่อมที่พบบ่อยที่สุดในระบบ</p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] text-orange-400 font-semibold bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
+                      ความถี่สูงสุด
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 text-xs">
+                    {[
+                      { issue: 'แอร์ไม่เย็น / น้ำยาแอร์พร่อง', percent: 45, count: '14 ครั้ง', color: 'bg-orange-500' },
+                      { issue: 'ล้างแอร์ทำความสะอาดประจำรอบ', percent: 28, count: '9 ครั้ง', color: 'bg-blue-500' },
+                      { issue: 'มีน้ำหยด / แอร์เสียงดังผิดปกติ', percent: 18, count: '6 ครั้ง', color: 'bg-emerald-500' },
+                      { issue: 'ตรวจเช็กบอร์ดอินเวอร์เตอร์ & ระบบไฟ', percent: 9, count: '3 ครั้ง', color: 'bg-purple-500' },
+                    ].map((row) => (
+                      <div key={row.issue} className="space-y-1">
+                        <div className="flex justify-between text-slate-300">
+                          <span className="font-medium text-slate-200">{row.issue}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-slate-400 font-mono">{row.count}</span>
+                            <span className="font-bold font-mono text-white">{row.percent}%</span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                          <div className={`h-full rounded-full ${row.color}`} style={{ width: `${row.percent}%` }} />
                         </div>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
-                        <div className={`h-full rounded-full ${row.color}`} style={{ width: `${row.percent}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800 text-xs text-slate-300 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span className="text-[11px]">อุปกรณ์ที่มีการบำรุงรักษาล่าสุด: <strong>Daikin, Mitsubishi, Carrier</strong></span>
+                    ))}
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    สภาพปกติ 100%
-                  </span>
+
+                  <div className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800/80 text-xs text-slate-300 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="text-[11px]">อุปกรณ์ที่มีการบำรุงรักษาล่าสุด: <strong>Daikin, Mitsubishi, Carrier</strong></span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      สภาพปกติ 100%
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
