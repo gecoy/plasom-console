@@ -235,6 +235,12 @@ export function saveNewProject(project: ProjectItem, userId?: string): ProjectIt
   return updated;
 }
 
+export function removeProjectFromCache(projectId: string, userId?: string): ProjectItem[] {
+  const updated = loadProjects(userId).filter((project) => project.id !== projectId);
+  localStorage.setItem(getStorageKey(userId), JSON.stringify(updated));
+  return updated;
+}
+
 export function loadDemoProjectsForUser(userId?: string): ProjectItem[] {
   const cloned = INITIAL_PROJECTS.map((p) => ({
     ...p,

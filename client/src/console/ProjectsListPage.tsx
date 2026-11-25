@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -19,15 +19,18 @@ import {
   CheckCircle2,
   X,
   Loader2,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   loadProjects,
   loadDemoProjectsForUser,
+  removeProjectFromCache,
   saveNewProject,
   type ProjectItem,
 } from './mockConsoleData';
-import { fetchMyProjects, createProjectApi } from './consoleApi';
+import { deleteProjectApi, fetchMyProjects, createProjectApi } from './consoleApi';
 import { avatarInitial } from './tabs/tabUtils';
 import { ScrollReveal, Tilt3DCard, NumberTicker } from '../components/InteractiveUI';
 import {
@@ -91,6 +94,9 @@ export function ProjectsListPage() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [projectPendingDelete, setProjectPendingDelete] = useState<ProjectItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [botFilter, setBotFilter] = useState<BotFilterKey>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -98,6 +104,49 @@ export function ProjectsListPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const userId = user?.id;
+  const deleteDialogCancelRef = useRef<HTMLButtonElement>(null);
+  const deleteTriggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (projectPendingDelete) {
+      deleteDialogCancelRef.current?.focus();
+    } else {
+      deleteTriggerRef.current?.focus();
+      deleteTriggerRef.current = null;
+    }
+  }, [projectPendingDelete]);
+
+  const requestDeleteProject = (project: ProjectItem) => {
+    if (!userId || deletingProjectId) return;
+    deleteTriggerRef.current = document.activeElement as HTMLElement;
+    setDeleteError(null);
+    setProjectPendingDelete(project);
+  };
+
+  const dismissDeleteDialog = () => {
+    if (deletingProjectId) return;
+    setDeleteError(null);
+    setProjectPendingDelete(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userId || !projectPendingDelete || deletingProjectId) return;
+    const project = projectPendingDelete;
+    setDeletingProjectId(project.id);
+    setDeleteError(null);
+    try {
+      await deleteProjectApi(project.id);
+      removeProjectFromCache(project.id, userId);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      deleteTriggerRef.current = null;
+      setProjectPendingDelete(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
+      setDeleteError(message);
+    } finally {
+      setDeletingProjectId(null);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -275,9 +324,27 @@ export function ProjectsListPage() {
         </ScrollReveal>
 
         {isLoading ? (
-          <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
-            <Loader2 className="w-7 h-7 animate-spin text-orange-400" />
-            <span className="text-sm">กำลังดึงข้อมูลโปรเจกต์จากฐานข้อมูล...</span>
+          <div aria-busy="true" aria-label="กำลังโหลดโปรเจกต์">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 mb-7">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="p-4 sm:p-5 rounded-2xl bg-[#0b1220]/90 border border-slate-800/80 shadow-lg shadow-black/10">
+                  <div className="h-3 w-2/3 rounded skeleton-shimmer" />
+                  <div className="h-7 w-1/2 rounded skeleton-shimmer mt-3" />
+                </div>
+              ))}
+            </div>
+            <div className="h-14 rounded-2xl skeleton-shimmer mb-6" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+              {Array.from({ length: 3 }, (_, index) => (
+                <div key={index} className="h-72 rounded-2xl bg-[#0b1220]/90 border border-slate-800/80 p-6 shadow-xl shadow-black/15">
+                  <div className="h-10 w-2/3 rounded-xl skeleton-shimmer" />
+                  <div className="h-5 w-1/2 rounded skeleton-shimmer mt-6" />
+                  <div className="h-4 w-3/4 rounded skeleton-shimmer mt-3" />
+                  <div className="h-16 rounded-xl skeleton-shimmer mt-8" />
+                  <div className="h-4 w-2/3 rounded skeleton-shimmer mt-7" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : projects.length === 0 ? (
           <ScrollReveal delay={80}>
@@ -494,7 +561,7 @@ export function ProjectsListPage() {
 
                   return (
                     <ScrollReveal key={proj.id} delay={Math.min(idx * 60, 240)}>
-                      <Link to={`/projects/${proj.id}`} className="block h-full group">
+                      <div className="block h-full group">
                         <GlowingCard
                           glowColor={visual.glow}
                           secondaryGlow={visual.secondaryGlow}
@@ -520,12 +587,31 @@ export function ProjectsListPage() {
                                   </span>
                                 </div>
 
-                                <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full font-semibold shrink-0">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                                  ออนไลน์
-                                </span>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full font-semibold">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    ออนไลน์
+                                  </span>
+                                  <button
+                                    type="button"
+                                    aria-label={`ลบโปรเจกต์ร้านค้า ${proj.name}`}
+                                    title="ลบโปรเจกต์ร้านค้า"
+                                    disabled={deletingProjectId === proj.id}
+                                    onClick={() => requestDeleteProject(proj)}
+                                    className="p-2 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-wait"
+                                  >
+                                    {deletingProjectId === proj.id ? (
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                </div>
                               </div>
 
+                              </div>
+                              <Link to={`/projects/${proj.id}`} className="block">
+                              <div>
                               <div className="mt-4">
                                 <h2 className="text-lg font-bold text-white group-hover:text-orange-300 transition-colors line-clamp-1">
                                   {proj.name}
@@ -590,9 +676,10 @@ export function ProjectsListPage() {
                                 <ArrowUpRight className="w-4 h-4" />
                               </span>
                             </div>
+                              </Link>
                           </Tilt3DCard>
                         </GlowingCard>
-                      </Link>
+                      </div>
                     </ScrollReveal>
                   );
                 })}
@@ -620,13 +707,16 @@ export function ProjectsListPage() {
                   const visual = getCategoryVisual(proj.category);
                   const CategoryIcon = visual.Icon;
                   return (
-                    <Link key={proj.id} to={`/projects/${proj.id}`} className="block group">
+                    <div key={proj.id} className="block group">
                       <GlowingCard
                         glowColor={visual.glow}
                         secondaryGlow={visual.secondaryGlow}
                         innerClassName="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                       >
-                        <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                        <Link
+                          to={`/projects/${proj.id}`}
+                          className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1"
+                        >
                           <div
                             className={`w-11 h-11 rounded-xl border flex items-center justify-center shrink-0 ${visual.iconBoxClass}`}
                           >
@@ -648,7 +738,7 @@ export function ProjectsListPage() {
                               ข้อมูลที่บอทเก็บ: {proj.requiredFields.join(', ')}
                             </div>
                           </div>
-                        </div>
+                        </Link>
 
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
                           <span
@@ -669,13 +759,31 @@ export function ProjectsListPage() {
                           >
                             Voice: {proj.voicebotConnected ? 'เชื่อมแล้ว' : 'ยังไม่ผูก'}
                           </span>
-                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-orange-400 pl-2">
+                          <Link
+                            to={`/projects/${proj.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-orange-400 pl-2"
+                          >
                             จัดการ
                             <ArrowUpRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                          </span>
+                          </Link>
+                          <button
+                            type="button"
+                            aria-label={`ลบโปรเจกต์ร้านค้า ${proj.name}`}
+                            title="ลบโปรเจกต์ร้านค้า"
+                            disabled={deletingProjectId === proj.id}
+                            onClick={() => requestDeleteProject(proj)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50 transition-colors cursor-pointer disabled:cursor-wait"
+                          >
+                            {deletingProjectId === proj.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                            ลบ
+                          </button>
                         </div>
                       </GlowingCard>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
@@ -683,6 +791,122 @@ export function ProjectsListPage() {
           </>
         )}
       </main>
+      {projectPendingDelete && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) dismissDeleteDialog();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              dismissDeleteDialog();
+              return;
+            }
+            if (event.key === 'Tab') {
+              const focusable = event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                'button:not(:disabled)'
+              );
+              const first = focusable[0];
+              const last = focusable[focusable.length - 1];
+              if (!first || !last) return;
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+              }
+            }
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+            aria-describedby="delete-project-description"
+            className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-rose-300/15 bg-gradient-to-br from-[#151a2a] via-[#101522] to-[#0b0f19] text-white shadow-[0_32px_100px_-24px_rgba(0,0,0,0.9)] animate-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+          >
+            <div className="absolute inset-x-12 -top-20 h-40 rounded-full bg-rose-500/10 blur-3xl" />
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-rose-300/50 to-transparent" />
+            <div className="relative p-6 sm:p-8">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-rose-400/20 bg-gradient-to-br from-rose-500/20 to-orange-500/10 text-rose-300 shadow-[0_8px_24px_-12px_rgba(244,63,94,0.8)]">
+                    <Trash2 className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-rose-300/80">
+                      ลบถาวร
+                    </span>
+                    <h2 id="delete-project-title" className="mt-1 text-lg font-bold tracking-tight">
+                      ยืนยันการลบร้านค้า
+                    </h2>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  aria-label="ปิดหน้าต่างยืนยัน"
+                  disabled={Boolean(deletingProjectId)}
+                  onClick={dismissDeleteDialog}
+                  className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-40"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <p id="delete-project-description" className="mt-5 text-sm leading-6 text-slate-300">
+                คุณกำลังจะลบโปรเจกต์{' '}
+                <span className="font-semibold text-white">&quot;{projectPendingDelete.name}&quot;</span>
+                <span className="text-slate-400"> การดำเนินการนี้ไม่สามารถย้อนกลับได้</span>
+              </p>
+
+              <div className="mt-5 flex gap-3 rounded-2xl border border-amber-400/15 bg-amber-400/[0.06] p-4">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                <p className="text-xs leading-5 text-slate-300">
+                  รีวิวของร้านนี้จะถูกลบ ส่วนใบงานและข้อมูลช่างจะยังอยู่ แต่จะไม่ผูกกับโปรเจกต์นี้อีก
+                </p>
+              </div>
+
+              {deleteError && (
+                <p role="alert" className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-200">
+                  ลบโปรเจกต์ไม่สำเร็จ: {deleteError}
+                </p>
+              )}
+
+              <div className="mt-7 grid grid-cols-2 gap-3">
+                <button
+                  ref={deleteDialogCancelRef}
+                  type="button"
+                  disabled={Boolean(deletingProjectId)}
+                  onClick={dismissDeleteDialog}
+                  className="rounded-xl border border-slate-700/80 bg-slate-800/50 px-4 py-3 text-sm font-semibold text-slate-200 transition-colors hover:border-slate-600 hover:bg-slate-700/70 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  เก็บร้านนี้ไว้
+                </button>
+                <button
+                  type="button"
+                  disabled={Boolean(deletingProjectId)}
+                  onClick={handleConfirmDelete}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-300/20 bg-gradient-to-r from-rose-600 to-red-600 px-4 py-3 text-sm font-bold text-white shadow-[0_10px_28px_-12px_rgba(225,29,72,0.8)] transition-all hover:from-rose-500 hover:to-red-500 hover:shadow-[0_12px_34px_-12px_rgba(225,29,72,0.95)] disabled:cursor-wait disabled:opacity-70"
+                >
+                  {deletingProjectId ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      กำลังลบ...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      ลบโปรเจกต์
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </AuroraBackground>
   );
 }
