@@ -1092,7 +1092,7 @@ export function TicketsTab({ project }: Props) {
       return;
     }
 
-    let createdDb: any = null;
+        let createdDb: any = null;
     if (!project.id.startsWith('proj-')) {
       try {
         createdDb = await createManualTicketInDb(project.id, {
@@ -1107,8 +1107,12 @@ export function TicketsTab({ project }: Props) {
           priority: createPriority,
           extraDetails: createDynamicExtra,
         });
-      } catch {
-        // fallback local if validation fails
+      } catch (err: any) {
+        const msg =
+          err?.response?.data?.error ||
+          'เชื่อมต่อหลังบ้านไม่ได้ (เช็กว่าเปิด npm run dev ในโฟลเดอร์ server แล้วหรือยัง)';
+        showToast(msg, 'error');
+        return;
       }
     }
     const code = createdDb?.trackingCode || `PS-${Math.floor(1000 + Math.random() * 9000)}`;
