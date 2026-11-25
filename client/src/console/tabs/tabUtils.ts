@@ -62,3 +62,15 @@ export function avatarInitial(customerName: string): string {
   const name = customerName.trim().replace(/^คุณ\s*/, '').replace(LEADING_THAI_VOWELS, '');
   return name.charAt(0).toUpperCase() || '?';
 }
+
+/** ร้านตัวอย่าง (โหลดจากปุ่มทดลอง) รหัสขึ้นต้นด้วย proj- ส่วนร้านจริงจาก Database ไม่ใช่ */
+export function isDemoProject(projectId: string): boolean {
+  return projectId.startsWith('proj-');
+}
+
+/** เวลาแบบ 14:05 สำหรับป้าย "อัปเดตล่าสุด" และข้อความที่แอดมินพิมพ์ */
+export function formatClock(date: Date): string {
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}

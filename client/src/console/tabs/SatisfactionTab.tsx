@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { MOCK_REVIEWS, ProjectItem, SatisfactionItem } from '../mockConsoleData';
 import { fetchProjectReviewsApi } from '../consoleApi';
 import {
@@ -7,6 +7,8 @@ import {
   belongsToProject,
   clampRating,
   filterReviewsByRating,
+  formatClock,
+  isDemoProject,
   ratingDistribution,
 } from './tabUtils';
 
@@ -29,36 +31,59 @@ export function SatisfactionTab({ project }: Props) {
 }
 
 function SatisfactionTabContent({ project }: Props) {
-  const fallbackMocks = MOCK_REVIEWS.filter((r) => belongsToProject(r.projectId, project.id));
-  const [reviews, setReviews] = useState<SatisfactionItem[]>(fallbackMocks);
-  const [loading, setLoading] = useState(true);
-  const [starFilter, setStarFilter] = useState<number | null>(null);
+  const isDemo = isDemoProject(project.id);
+  const demoReviews = isDemo
+    ? MOCK_REVIEWS.filter((r) => belongsToProject(r.projectId, project.id))
+    : [];
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (project.id.startsWith('proj-')) {
-        setReviews(fallbackMocks);
-        setLoading(false);
+  // ร้านจริงเริ่มจากค่าว่าง + loading ห้ามเอารีวิวปลอมมาโชว์คั่นเวลา
+  const [reviews, setReviews] = useState<SatisfactionItem[]>(demoReviews);
+  const [loading, setLoading] = useState(!isDemo);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(() => (isDemo ? new Date() : null));
+  const [starFilter, setStarFilter] = useState<number | null>(null);
+  const requestId = useRef(0);
+
+  const loadReviews = useCallback(
+    async (mode: 'initial' | 'refresh') => {
+      // ครั้งแรก state เริ่มต้นถูกตั้งไว้แล้ว (loading=true, error='') จึงไม่ต้อง setState ทันที
+      if (isDemo) {
+        if (mode === 'refresh') setLastUpdated(new Date());
         return;
       }
-      setLoading(true);
-      try {
-        const dbReviews = await fetchProjectReviewsApi(project.id);
-        if (!cancelled) {
-          setReviews(dbReviews.length > 0 ? dbReviews : fallbackMocks);
-        }
-      } catch {
-        if (!cancelled) setReviews(fallbackMocks);
-      } finally {
-        if (!cancelled) setLoading(false);
+      const myRequest = ++requestId.current;
+      if (mode === 'refresh') {
+        setRefreshing(true);
+        setError('');
       }
-    }
-    load();
+      try {
+        const list = await fetchProjectReviewsApi(project.id);
+        if (myRequest !== requestId.current) return;
+        setReviews(list);
+        setLastUpdated(new Date());
+      } catch {
+        if (myRequest !== requestId.current) return;
+        setError('โหลดรีวิวไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+      } finally {
+        if (myRequest === requestId.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [isDemo, project.id],
+  );
+
+  useEffect(() => {
+    const requests = requestId;
+    loadReviews('initial');
     return () => {
-      cancelled = true;
+      requests.current++; // ออกจากหน้าแล้ว ทิ้งผลที่มาทีหลัง
     };
-  }, [project.id]);
+  }, [loadReviews]);
+
+  const busy = loading || refreshing;
 
   const avgScore = averageRating(reviews);
   const distribution = ratingDistribution(reviews);
@@ -69,7 +94,7 @@ function SatisfactionTabContent({ project }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+      <div className="flex items-start justify-between gap-4 pb-2 border-b border-slate-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
             <span className="w-2.5 h-6 rounded-sm bg-amber-400 inline-block" />
@@ -79,9 +104,66 @@ function SatisfactionTabContent({ project }: Props) {
             สรุปคะแนนรีวิว 1–5 ดาว และข้อเสนอแนะจากลูกค้าหลังปิดใบงานซ่อมสำเร็จ
           </p>
         </div>
-        {loading && <Loader2 className="w-5 h-5 animate-spin text-amber-400" />}
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => loadReviews('refresh')}
+            disabled={busy}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูลล่าสุด'}
+          </button>
+          {lastUpdated && (
+            <span className="text-[11px] text-slate-500">อัปเดตล่าสุด {formatClock(lastUpdated)}</span>
+          )}
+        </div>
       </div>
 
+      {error && (
+        <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-sm text-rose-300 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => loadReviews('refresh')}
+            className="text-rose-200 underline hover:text-white cursor-pointer"
+          >
+            ลองอีกครั้ง
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div role="status" className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="p-6 rounded-2xl bg-[#111827] border border-slate-800 animate-pulse">
+                <div className="h-3 w-1/2 rounded bg-slate-800" />
+                <div className="mt-3 h-8 w-2/3 rounded bg-slate-800" />
+              </div>
+            ))}
+          </div>
+          <div className="p-10 rounded-2xl bg-[#111827] border border-slate-800 flex flex-col items-center gap-3 text-sm text-slate-400">
+            <Loader2 className="w-7 h-7 animate-spin text-amber-400" />
+            <span>กำลังดึงรีวิวจากฐานข้อมูล...</span>
+          </div>
+        </div>
+      ) : reviews.length === 0 ? (
+        !error && (
+          <div className="p-12 rounded-2xl bg-[#111827] border border-slate-800 text-center">
+            <div className="mx-auto w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+              <Star className="w-6 h-6 text-amber-400" />
+            </div>
+            <div className="mt-4 font-bold text-white">ยังไม่มีรีวิว</div>
+            <p className="mt-1 text-sm text-slate-400">
+              {csatOn
+                ? 'เมื่อช่างปิดงานและลูกค้าให้ดาวผ่านบอท รีวิวจะแสดงที่นี่ กด “รีเฟรชข้อมูลล่าสุด” เพื่อเช็กรีวิวใหม่'
+                : 'ร้านนี้ยังปิดระบบส่งแบบประเมินอยู่ เปิดได้ที่การตั้งค่าบอทของร้าน'}
+            </p>
+          </div>
+        )
+      ) : (
+      <>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-6 rounded-2xl bg-[#111827] border border-slate-800">
           <div className="text-xs text-slate-400">คะแนนความพึงพอใจเฉลี่ย</div>
@@ -195,6 +277,8 @@ function SatisfactionTabContent({ project }: Props) {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
