@@ -429,3 +429,23 @@ export async function fetchProjectReviewsApi(projectId: string): Promise<Satisfa
   writeCache(`plasom_reviews_cache_${projectId}`, mapped);
   return mapped;
 }
+
+export async function createSimulatedReviewApi(
+  projectId: string,
+  rating = 5
+): Promise<SatisfactionItem> {
+  const res = await api.post(`/projects/${projectId}/reviews`, { rating });
+  const rv = res.data?.data;
+  const mapped: SatisfactionItem = {
+    id: rv.id,
+    projectId,
+    customerName: rv.customerName || 'ลูกค้า',
+    ticketCode: rv.ticketCode || '-',
+    rating: Number(rv.rating) || 5,
+    comment: rv.comment || '',
+    createdAt: rv.createdAt ? String(rv.createdAt).slice(0, 10) : new Date().toISOString().slice(0, 10),
+  };
+  const prev = readCachedReviews(projectId);
+  writeCache(`plasom_reviews_cache_${projectId}`, [mapped, ...prev]);
+  return mapped;
+}

@@ -6,6 +6,7 @@ import {
   deleteProjectTechnician,
   getProjectById,
   getProjectReviews,
+  createProjectReview,
   getProjectSummary,
   getProjectTicketMessages,
   getProjects,
@@ -39,5 +40,6 @@ router.post("/:projectId/technicians", createProjectTechnician);
 router.patch("/:projectId/technicians/:technicianId", updateProjectTechnician);
 router.delete("/:projectId/technicians/:technicianId", deleteProjectTechnician);
 router.get("/:projectId/reviews", getProjectReviews);
+router.post("/:projectId/reviews", createProjectReview);
 
 export default router;

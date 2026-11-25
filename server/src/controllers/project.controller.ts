@@ -765,3 +765,47 @@ export async function createProjectTicket(req: any, res: any, next: any): Promis
     next(err);
   }
 }
+
+export async function createProjectReview(req: any, res: any, next: any): Promise<void> {
+  try {
+    const ownerId = getOwnerId(req, res);
+    if (!ownerId) return;
+
+    const projectId = req.params.projectId;
+    if (!(await findOwnedProject(projectId, ownerId))) {
+      res.status(404).json({ success: false, error: "ไม่พบร้านค้าในบัญชีนี้ " });
+      return;
+    }
+
+    const rating = Math.min(5, Math.max(1, Number(req.body?.rating) || 5));
+    const samples = [
+      { name: "คุณพิมพ์ชนก", text: "ช่างมาตรงเวลามาก ซ่อมเสร็จไว แอร์เย็นฉ่ำเลยค่ะ" },
+      { name: "คุณธนกฤต", text: "บริการประทับใจ แจ้งผ่านบอทง่ายมาก แนะนำเลยครับ" },
+      { name: "คุณกานต์พิชชา", text: "งานเรียบร้อย ช่างสุภาพ ให้คำแนะนำดีมากค่ะ" },
+    ];
+    const pick = samples[Math.floor(Math.random() * samples.length)];
+
+    const unreviewedTicket = await prisma.ticket.findFirst({
+      where: { projectId, review: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, trackingCode: true, customerName: true },
+    });
+
+    const created = await prisma.review.create({
+      data: {
+        projectId,
+        ticketId: unreviewedTicket?.id ?? null,
+        customerName: req.body?.customerName || unreviewedTicket?.customerName || pick.name,
+        rating,
+        comment: req.body?.comment || pick.text,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: { ...created, ticketCode: unreviewedTicket?.trackingCode ?? null },
+    });
+  } catch (err) {
+    next(err);
+  }
+}

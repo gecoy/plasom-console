@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { MOCK_REVIEWS, ProjectItem, SatisfactionItem } from '../mockConsoleData';
-import { fetchProjectReviewsApi, readCachedReviews } from '../consoleApi';
+import { fetchProjectReviewsApi, readCachedReviews, createSimulatedReviewApi } from '../consoleApi';
 import {
   averageRating,
   belongsToProject,
@@ -92,6 +92,23 @@ function SatisfactionTabContent({ project }: Props) {
 
   const toggleStar = (star: number) => setStarFilter((cur) => (cur === star ? null : star));
 
+  const [simulating, setSimulating] = useState(false);
+
+  const handleSimulateReview = async () => {
+    if (isDemo || simulating) return;
+    setSimulating(true);
+    setError('');
+    try {
+      const added = await createSimulatedReviewApi(project.id, 5);
+      setReviews((prev) => [added, ...prev]);
+      setLastUpdated(new Date());
+    } catch {
+      setError('จำลองส่งรีวิวไม่สำเร็จ (เช็กว่าเซิร์ฟเวอร์รันอยู่หรือดันโค้ดขึ้น main แล้ว)');
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 pb-2 border-b border-slate-800">
@@ -105,15 +122,28 @@ function SatisfactionTabContent({ project }: Props) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => loadReviews('refresh')}
-            disabled={busy}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูลล่าสุด'}
-          </button>
+          <div className="flex items-center gap-2">
+            {!isDemo && (
+              <button
+                type="button"
+                onClick={handleSimulateReview}
+                disabled={busy || simulating}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 text-slate-950 text-sm font-semibold hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Star className="w-4 h-4 fill-slate-950" />
+                {simulating ? 'กำลังบันทึก...' : 'จำลองรีวิว 5 ดาว'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => loadReviews('refresh')}
+              disabled={busy}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูลล่าสุด'}
+            </button>
+          </div>
           {lastUpdated && (
             <span className="text-[11px] text-slate-500">อัปเดตล่าสุด {formatClock(lastUpdated)}</span>
           )}
