@@ -276,7 +276,11 @@ export function ConsoleLayout() {
           sidebarCollapsed ? 'w-20' : 'w-72'
         }`}
       >
-        <div className="h-16 px-4 border-b border-slate-800/90 flex items-center justify-between gap-2">
+        <div
+          className={`h-16 border-b border-slate-800/90 flex items-center relative ${
+            sidebarCollapsed ? 'px-2 justify-center' : 'px-4 justify-between gap-2'
+          }`}
+        >
           <Link
             to="/projects"
             className="flex items-center gap-2.5 min-w-0 group"
@@ -304,10 +308,14 @@ export function ConsoleLayout() {
               setSwitcherOpen(false);
             }}
             aria-label={sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}
-            className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors cursor-pointer shrink-0"
+            className={`bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors cursor-pointer shrink-0 ${
+              sidebarCollapsed
+                ? 'absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center shadow-md z-40'
+                : 'p-1.5 rounded-lg'
+            }`}
           >
             {sidebarCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
+              <ChevronRight className="w-3.5 h-3.5" />
             ) : (
               <ChevronLeft className="w-4 h-4" />
             )}
@@ -650,8 +658,75 @@ export function ConsoleLayout() {
         </div>
       )}
 
-      <div className="flex-1 flex flex-col min-w-0 relative">
-        <header className="sticky top-0 z-20 min-h-16 bg-[#0b101e]/85 backdrop-blur-xl border-b border-slate-800/90 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
+      <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden bg-[#070b14]">
+        {/* Full-bleed Vibrant Glowing Ambient Background (Multi-layer Aurora Glow + Tubelight + Cyber Grid + Beams) */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+          {/* Layer 1: Core Intense Radial Glow (กึ่งกลางบนสุด สว่างชัดเจนแบบรูปที่ 5) */}
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[46rem] max-w-[95vw] h-[22rem] rounded-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-500/55 via-amber-500/30 to-transparent blur-[75px]" />
+
+          {/* Layer 2: Wide Ambient Aurora Atmosphere (รัศมีแผ่กว้างไล่เฉดส้ม-ทอง) */}
+          <div className="absolute -top-36 left-1/2 -translate-x-1/2 w-[80rem] max-w-[150vw] h-[36rem] rounded-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-500/40 via-amber-500/22 via-orange-600/12 to-transparent blur-[115px] animate-aurora" />
+
+          {/* Layer 3: Ultra-wide Deep Orange Aura */}
+          <div className="absolute -top-20 left-1/2 -translate-x-1/2 w-[95rem] max-w-[165vw] h-[44rem] rounded-full bg-orange-600/18 blur-[140px]" />
+
+          {/* Layer 4: Top Glowing Tubelight Line (เส้นขอบแสงนีออนเรืองแสงใต้ Header) */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[48rem] max-w-full h-[2.5px] bg-gradient-to-r from-transparent via-orange-400 to-transparent shadow-[0_0_25px_6px_rgba(249,115,22,0.9)] opacity-90" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[28rem] max-w-full h-[6px] bg-gradient-to-r from-transparent via-amber-300 to-transparent blur-[3px] opacity-80" />
+
+          {/* Side Spotlights (แสงเรืองส้มมุมข้าง) */}
+          <div className="absolute top-16 -right-20 w-[38rem] h-[34rem] rounded-full bg-gradient-to-br from-orange-500/24 via-amber-500/12 to-transparent blur-[115px] animate-pulse-slow" />
+          <div className="absolute top-28 -left-20 w-[32rem] h-[30rem] rounded-full bg-gradient-to-tr from-amber-500/20 via-orange-600/14 to-transparent blur-[115px]" />
+          <div className="absolute bottom-10 left-1/3 w-[40rem] h-[28rem] rounded-full bg-orange-500/10 blur-[135px]" />
+
+          {/* Architectural Cyber Grid with Radial Vignette Mask */}
+          <div
+            className="absolute inset-0 bg-grid-dark opacity-75"
+            style={{
+              maskImage: 'radial-gradient(ellipse 90% 80% at 50% 25%, #000 45%, transparent 100%)',
+              WebkitMaskImage: 'radial-gradient(ellipse 90% 80% at 50% 25%, #000 45%, transparent 100%)',
+            }}
+          />
+
+          {/* Vivid SVG Light Beams */}
+          <svg
+            className="absolute inset-0 w-full h-full opacity-55"
+            viewBox="0 0 1440 900"
+            fill="none"
+            preserveAspectRatio="xMidYMid slice"
+          >
+            <defs>
+              <linearGradient id="console-beam-orange" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#f97316" stopOpacity="0" />
+                <stop offset="50%" stopColor="#fb923c" stopOpacity="1" />
+                <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+              </linearGradient>
+              <linearGradient id="console-beam-cyan" x1="100%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#f59e0b" stopOpacity="0" />
+                <stop offset="50%" stopColor="#f97316" stopOpacity="0.85" />
+                <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M-100 120 C 350 250, 750 50, 1540 320"
+              stroke="url(#console-beam-orange)"
+              strokeWidth="1.8"
+              strokeDasharray="180 620"
+              className="animate-beam-flow"
+            />
+            <path
+              d="M1540 90 C 950 260, 520 100, -100 380"
+              stroke="url(#console-beam-cyan)"
+              strokeWidth="1.4"
+              strokeDasharray="150 680"
+              style={{ animationDelay: '1.6s' }}
+              className="animate-beam-flow"
+            />
+          </svg>
+        </div>
+
+        {/* Top Header with Frosted Glass so the Glow shines through */}
+        <header className="sticky top-0 z-20 min-h-16 bg-[#0b101e]/70 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -686,7 +761,7 @@ export function ConsoleLayout() {
               type="button"
               onClick={handleCopyWebhook}
               title="คัดลอก Webhook URL ประจำสาขานี้"
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#070b14] border border-slate-800 hover:border-orange-500/40 text-xs text-slate-300 hover:text-white transition-colors cursor-pointer"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#070b14]/80 border border-slate-800 hover:border-orange-500/40 text-xs text-slate-300 hover:text-white transition-colors cursor-pointer backdrop-blur-sm"
             >
               {copiedWebhook ? (
                 <>
@@ -702,7 +777,7 @@ export function ConsoleLayout() {
               )}
             </button>
 
-            <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 text-[11px] sm:text-xs font-semibold">
+            <span className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 text-[11px] sm:text-xs font-semibold backdrop-blur-sm">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="hidden sm:inline">Webhook พร้อมรับใบงาน</span>
               <span className="sm:hidden">ออนไลน์</span>
@@ -710,7 +785,7 @@ export function ConsoleLayout() {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-10 overflow-y-auto bg-grid-dark">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-10 overflow-y-auto relative z-10">
           <div key={`${currentProject.id}-${activeTab}`} className="max-w-6xl mx-auto">
             {activeTab === 'tickets' && <TicketsTab project={currentProject} />}
             {activeTab === 'conversations' && <ConversationsTab project={currentProject} />}
