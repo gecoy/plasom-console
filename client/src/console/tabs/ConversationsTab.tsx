@@ -43,7 +43,8 @@ function ConversationsTabContent({ project }: Props) {
   const [replyText, setReplyText] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
   const requestId = useRef(0);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesBoxRef = useRef<HTMLDivElement>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
 
   const loadThreads = useCallback(
     async (mode: 'initial' | 'refresh') => {
@@ -89,7 +90,9 @@ function ConversationsTabContent({ project }: Props) {
   const activeDrafts = activeThread ? staffDrafts[activeThread.id] || [] : [];
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ block: 'end' });
+    // เลื่อนเฉพาะกล่องข้อความไปล่างสุด (scrollIntoView จะลากทั้งหน้าเว็บเลื่อนตามด้วย)
+    const box = messagesBoxRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [activeThread?.id, activeDrafts.length]);
 
   const sendReply = () => {
@@ -124,8 +127,12 @@ function ConversationsTabContent({ project }: Props) {
       document.body.removeChild(el);
     }
     setCopiedCode(ok ? code : `fail:${code}`);
-    window.setTimeout(() => setCopiedCode(''), 2000);
+    // กดซ้ำเร็วๆ ให้นับเวลาใหม่ ไม่ให้ตัวจับเวลาเก่าลบป้ายของคลิกล่าสุด
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopiedCode(''), 2000);
   };
+
+  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
 
   const busy = loading || refreshing;
 
@@ -308,7 +315,7 @@ function ConversationsTabContent({ project }: Props) {
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto max-h-[440px] p-6 space-y-4">
+                <div ref={messagesBoxRef} className="flex-1 overflow-y-auto max-h-[440px] p-6 space-y-4">
                   {activeThread.messages.map((m, idx) => {
                     const isBot = m.sender === 'BOT';
                     return (
@@ -339,7 +346,6 @@ function ConversationsTabContent({ project }: Props) {
                       </div>
                     </div>
                   ))}
-                  <div ref={messagesEndRef} />
                 </div>
 
                 <form
