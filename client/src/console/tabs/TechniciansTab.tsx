@@ -25,7 +25,7 @@ import {
   Award,
   TrendingUp,
 } from 'lucide-react';
-import { MOCK_TECHS, ProjectItem, TechnicianItem } from '../mockConsoleData';
+import type { ProjectItem, TechnicianItem } from '../mockConsoleData';
 import {
   readCachedTechnicians,
   fetchProjectTechniciansApi,
@@ -98,33 +98,22 @@ const TECH_STATUS_CONFIG: Record<
 export function TechniciansTab({ project }: Props) {
   const [techs, setTechs] = useState<ExtendedTechnician[]>(() => {
     if (!project.id.startsWith('proj-')) {
-      return readCachedTechnicians(project.id).map((t: any, idx: number) => ({
+      return readCachedTechnicians(project.id).map((t: any) => ({
         id: t.id,
         projectId: project.id,
         name: t.name,
         specialty: t.specialty || 'ช่างประจำร้าน',
         phone: t.phone || '-',
-        lineId: t.area || `@tech_${idx + 1}`,
+        lineId: t.area || '-',
         activeJobs: Number(t.activeJobs ?? t._count?.tickets ?? 0),
         status: (t.status as TechStatus) || 'AVAILABLE',
-        rating: 4.9,
-        reviewCount: 15,
-        completedJobs: Number(t.completedJobs ?? 12),
+        rating: t.rating ? Number(t.rating) : undefined,
+        reviewCount: t.reviewCount ? Number(t.reviewCount) : 0,
+        completedJobs: Number(t.completedJobs ?? 0),
         maxDailyJobs: 4,
       }));
     }
-    // คงโค้ด Mock เดิมไว้เฉพาะตอนเปิดโปรเจกต์ตัวอย่าง (proj-...)
-    return MOCK_TECHS.map((t, idx) => ({
-      ...t,
-      projectId: project.id,
-      status: t.status as TechStatus,
-      phone: `08${idx + 1}-555-${1000 + idx * 123}`,
-      lineId: `@tech_${t.name.split(' ')[0]}`,
-      rating: Number((4.7 + (idx % 3) * 0.1).toFixed(1)),
-      reviewCount: 24 + idx * 11,
-      completedJobs: 38 + idx * 17,
-      maxDailyJobs: 4,
-    }));
+    return [];
   });
 
   // Search & Filter States
@@ -321,63 +310,117 @@ export function TechniciansTab({ project }: Props) {
       )}
 
       {/* Header Section */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <span className="w-2.5 h-6 rounded-sm bg-orange-500 inline-block" />
-            <span>จัดการทีมช่าง (Technicians)</span>
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">
-            จัดการข้อมูลทีมช่าง ช่องทางติดต่อ LINE/เบอร์โทร ตรวจสอบสถานะความพร้อม และส่งแจ้งเตือนงาน
-          </p>
-        </div>
+      <div className="relative rounded-2xl overflow-hidden border border-slate-800/70 bg-gradient-to-br from-[#0d1220]/95 via-[#111827]/95 to-[#0b0f19]/95 shadow-xl">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-orange-500/60 to-transparent" />
+        <div className="absolute top-0 right-1/4 w-64 h-16 bg-orange-500/10 blur-2xl pointer-events-none rounded-full" />
 
-        {/* Add Technician Button */}
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="h-[40px] px-4 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-colors duration-150 cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>+ เพิ่มช่างเข้าโปรเจกต์</span>
-        </button>
+        <div className="relative p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500/30 to-amber-600/20 border border-orange-500/30 flex items-center justify-center shadow-lg shadow-orange-500/10">
+              <Wrench className="w-5 h-5 text-orange-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-white via-orange-100 to-amber-200 bg-clip-text text-transparent leading-tight">
+                  จัดการทีมช่าง
+                </h1>
+                <span className="text-sm font-normal text-slate-500 leading-tight">(Technicians)</span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                  TEAM
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                จัดการข้อมูลทีมช่าง · ช่องทางติดต่อ LINE/เบอร์โทร · ตรวจสอบสถานะความพร้อม · ส่งแจ้งเตือนงาน
+              </p>
+            </div>
+          </div>
+
+          {/* Add Technician Button */}
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="relative h-[38px] px-4 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer overflow-hidden transition-all duration-200 shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-95 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 self-start sm:self-auto shrink-0 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" />
+            <span>เพิ่มช่างเข้าโปรเจกต์</span>
+          </button>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-slate-700/50 to-transparent" />
       </div>
 
       {/* Overview Metric Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm">
-          <div className="text-xs font-medium text-slate-400">ช่างทั้งหมดในร้าน</div>
-          <div className="mt-1 text-2xl font-bold text-white">{allProjectTechs.length}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">คนในสังกัดโปรเจกต์นี้</div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm">
-          <div className="text-xs font-medium text-slate-400">พร้อมรับงานทันที</div>
-          <div className="mt-1 text-2xl font-bold text-emerald-400">
-            {allProjectTechs.filter((t) => t.status === 'AVAILABLE').length}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          {
+            label: 'ช่างทั้งหมดในร้าน',
+            count: allProjectTechs.length,
+            sub: 'คนในสังกัดโปรเจกต์นี้',
+            color: 'text-white',
+            numGlow: 'drop-shadow-[0_0_8px_rgba(255,255,255,0.25)]',
+            accent: 'from-slate-500/15 to-slate-800/10',
+            border: 'border-slate-700/60',
+            dot: 'bg-slate-400',
+            icon: <User className="w-3.5 h-3.5" />,
+          },
+          {
+            label: 'พร้อมรับงานทันที',
+            count: allProjectTechs.filter((t) => t.status === 'AVAILABLE').length,
+            sub: 'สถานะ Available',
+            color: 'text-emerald-300',
+            numGlow: 'drop-shadow-[0_0_10px_rgba(52,211,153,0.45)]',
+            accent: 'from-emerald-500/15 to-emerald-900/10',
+            border: 'border-emerald-800/40',
+            dot: 'bg-emerald-400',
+            icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+          },
+          {
+            label: 'ติดงานอยู่ / งานเต็ม',
+            count: allProjectTechs.filter((t) => t.status === 'BUSY').length,
+            sub: 'สถานะ Busy',
+            color: 'text-amber-300',
+            numGlow: 'drop-shadow-[0_0_10px_rgba(252,211,77,0.45)]',
+            accent: 'from-amber-500/15 to-amber-900/10',
+            border: 'border-amber-800/40',
+            dot: 'bg-amber-400',
+            icon: <Briefcase className="w-3.5 h-3.5" />,
+          },
+          {
+            label: 'พักงาน / ปิดใช้งาน',
+            count: allProjectTechs.filter((t) => t.status === 'INACTIVE').length,
+            sub: 'สถานะ Inactive',
+            color: 'text-slate-400',
+            numGlow: 'drop-shadow-[0_0_6px_rgba(148,163,184,0.3)]',
+            accent: 'from-slate-600/15 to-slate-800/10',
+            border: 'border-slate-700/50',
+            dot: 'bg-slate-500',
+            icon: <PauseCircle className="w-3.5 h-3.5" />,
+          },
+        ].map((s, i) => (
+          <div
+            key={i}
+            className={`relative group p-4 rounded-2xl bg-gradient-to-br ${s.accent} bg-[#0d1220]/85 border ${s.border} overflow-hidden hover:-translate-y-0.5 hover:shadow-lg transition-all duration-200`}
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-white/[0.03] to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl" />
+            <div className="relative">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold text-slate-400 leading-tight">{s.label}</span>
+                <span className={`${s.color} opacity-65`}>{s.icon}</span>
+              </div>
+              <div className={`text-2xl sm:text-3xl font-black tracking-tight ${s.color} ${s.numGlow}`}>
+                {s.count}
+              </div>
+              <div className="flex items-center justify-between mt-1.5">
+                <div className="text-[10px] text-slate-500 leading-tight">{s.sub}</div>
+                <span className={`w-1.5 h-1.5 rounded-full ${s.dot} opacity-60 inline-block`} />
+              </div>
+            </div>
           </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">สถานะ Available</div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm">
-          <div className="text-xs font-medium text-slate-400">ติดงานอยู่ / งานเต็ม</div>
-          <div className="mt-1 text-2xl font-bold text-amber-400">
-            {allProjectTechs.filter((t) => t.status === 'BUSY').length}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">สถานะ Busy</div>
-        </div>
-
-        <div className="p-4 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm">
-          <div className="text-xs font-medium text-slate-400">พักงาน / ปิดใช้งาน</div>
-          <div className="mt-1 text-2xl font-bold text-slate-400">
-            {allProjectTechs.filter((t) => t.status === 'INACTIVE').length}
-          </div>
-          <div className="text-[11px] text-slate-500 mt-0.5">สถานะ Inactive</div>
-        </div>
+        ))}
       </div>
 
       {/* Search & Filter Toolbar (Phase 3) */}
-      <div className="p-3.5 rounded-2xl bg-[#111827] border border-slate-800 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div className="p-3.5 rounded-2xl bg-[#0d1220]/90 backdrop-blur-md border border-slate-800/80 shadow-lg flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Search Input */}
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 text-orange-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -386,7 +429,7 @@ export function TechniciansTab({ project }: Props) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="ค้นหาชื่อช่าง, ความถนัด, เบอร์โทร หรือ LINE ID..."
-            className="w-full pl-10 pr-8 h-[38px] rounded-xl bg-[#0b0f19] border border-slate-700 text-xs text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
+            className="w-full pl-10 pr-8 h-[38px] rounded-xl bg-[#070b14]/90 border border-slate-700/80 text-xs text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:ring-1 focus:ring-orange-500/25 focus:outline-none transition-all"
           />
           {searchQuery && (
             <button
@@ -400,7 +443,7 @@ export function TechniciansTab({ project }: Props) {
         </div>
 
         {/* Status Filter Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
+        <div className="flex items-center gap-1.5 overflow-x-auto text-xs bg-[#070b14]/70 p-1 rounded-xl border border-slate-800/80">
           {(['ALL', 'AVAILABLE', 'BUSY', 'INACTIVE'] as const).map((st) => {
             const isActive = statusFilter === st;
             const labels = {
@@ -414,10 +457,10 @@ export function TechniciansTab({ project }: Props) {
                 key={st}
                 type="button"
                 onClick={() => setStatusFilter(st)}
-                className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap cursor-pointer transition-colors ${
+                className={`px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap cursor-pointer transition-all ${
                   isActive
-                    ? 'bg-orange-500 text-white shadow-sm'
-                    : 'bg-[#0b0f19] text-slate-400 hover:text-white border border-slate-800'
+                    ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
                 }`}
               >
                 {labels[st]}
@@ -546,7 +589,7 @@ export function TechniciansTab({ project }: Props) {
                         <Award className="w-3.5 h-3.5 text-orange-400" />
                         <span>งานที่สำเร็จแล้ว</span>
                       </span>
-                      <span className="font-semibold text-white">{tech.completedJobs || 35} งาน</span>
+                      <span className="font-semibold text-white">{tech.completedJobs ?? 0} งาน</span>
                     </div>
 
                     {/* Capacity Progress Bar */}
@@ -649,14 +692,14 @@ export function TechniciansTab({ project }: Props) {
         </div>
       </div>
 
-      {/* Modal: เพิ่มช่างใหม่ (Detailed Rich Modal with Phone & LINE ID - Symmetrical & Balanced) */}
+      {/* Modal: เพิ่มช่างใหม่ (2-Column Wide Layout — No Scrollbar) */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-[#111827] rounded-2xl border border-slate-800 shadow-2xl max-w-2xl w-full overflow-hidden text-white flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#0d1220] rounded-2xl border border-slate-800/90 shadow-2xl max-w-4xl w-full overflow-hidden text-white flex flex-col max-lg:max-h-[92vh] animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-[#0f172a]">
+            <div className="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between bg-gradient-to-r from-[#0f172a] via-[#111827] to-[#0f172a]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500/25 to-amber-500/15 border border-orange-500/30 text-orange-400 flex items-center justify-center shrink-0 shadow-lg shadow-orange-500/10">
                   <Wrench className="w-5 h-5" />
                 </div>
                 <div>
@@ -675,221 +718,262 @@ export function TechniciansTab({ project }: Props) {
               </button>
             </div>
 
-            {/* Modal Form Content */}
-            <div className="p-6 space-y-5 overflow-y-auto text-xs">
-              {/* Branch / Project Info Pill */}
-              <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-800">
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Building2 className="w-4 h-4 text-orange-400 shrink-0" />
-                  <span>สังกัดสาขา:</span>
-                  <span className="font-semibold text-white">{project.name}</span>
-                  <span className="text-slate-500">({project.branchName || 'สำนักงานใหญ่'})</span>
-                </div>
-                <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-orange-300 font-medium border border-slate-700/60">
-                  {project.category || 'งานบริการและซ่อมบำรุง'}
-                </span>
-              </div>
-
-              {/* Section 1: ข้อมูลช่าง & ช่องทางติดต่อ (2x2 Balanced Grid) */}
-              <div className="space-y-3">
+            {/* Modal Form Content — 2 Columns */}
+            <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs max-lg:overflow-y-auto">
+              {/* Left Column: Inputs & Skill Tags */}
+              <div className="lg:col-span-7 space-y-4">
                 <div className="font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-orange-400" />
-                  <span>ข้อมูลช่าง & ช่องทางติดต่อ (LINE / โทรศัพท์)</span>
+                  <span>ข้อมูลช่าง &amp; ช่องทางติดต่อ (LINE / โทรศัพท์)</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="font-medium text-slate-300 block mb-1.5">
-                      ชื่อช่าง / ชื่อเรียกในการรับงาน <span className="text-orange-400">*</span>
+                    <label className="font-medium text-slate-300 block mb-1">
+                      ชื่อช่าง / ชื่อเรียก <span className="text-orange-400">*</span>
                     </label>
                     <input
                       type="text"
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                       placeholder="เช่น ช่างนนท์ วงศ์สว่าง"
-                      className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="font-medium text-slate-300 block mb-1.5">เบอร์โทรศัพท์ติดต่อ</label>
+                    <label className="font-medium text-slate-300 block mb-1">เบอร์โทรศัพท์ติดต่อ</label>
                     <input
                       type="text"
                       value={newPhone}
                       onChange={(e) => setNewPhone(e.target.value)}
                       placeholder="08X-XXX-XXXX"
-                      className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="font-medium text-slate-300 block mb-1.5">LINE ID สำหรับรับงาน</label>
+                    <label className="font-medium text-slate-300 block mb-1">LINE ID สำหรับรับงาน</label>
                     <input
                       type="text"
                       value={newLineId}
                       onChange={(e) => setNewLineId(e.target.value)}
                       placeholder="@line_tech หรือ ID ช่าง"
-                      className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
                     />
                   </div>
 
                   <div>
-                    <label className="font-medium text-slate-300 block mb-1.5">
-                      ความถนัด / ทักษะเฉพาะทาง
-                    </label>
+                    <label className="font-medium text-slate-300 block mb-1">ความถนัด / ทักษะเฉพาะทาง</label>
                     <input
                       type="text"
                       value={newSpecialty}
                       onChange={(e) => setNewSpecialty(e.target.value)}
-                      placeholder="เช่น ซ่อมอินเวอร์เตอร์, ล้างแอร์ติดผนัง"
-                      className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
+                      placeholder="เช่น ซ่อมอินเวอร์เตอร์, ล้างแอร์"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 placeholder:text-slate-500 focus:border-orange-500 focus:outline-none transition-colors"
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Section 2: แท็กทักษะแนะนำ (4x2 Symmetrical Grid) */}
-              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-2.5">
-                <div className="flex items-center justify-between text-slate-400">
-                  <span className="text-[11px] font-semibold flex items-center gap-1.5 text-slate-300">
-                    <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                    <span>แท็กทักษะแนะนำ (คลิกเพื่อเติมด่วน):</span>
-                  </span>
-                  <span className="text-[10px] text-slate-500">คลิกเพื่อเพิ่มทักษะในช่อง</span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {COMMON_SKILL_TAGS.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => handleAppendSkill(tag, false)}
-                      className="text-[11px] px-2.5 py-2 rounded-lg bg-[#111827] hover:bg-orange-500/15 text-slate-300 hover:text-orange-300 border border-slate-700/70 hover:border-orange-500/40 text-center truncate cursor-pointer transition-colors font-medium shadow-2xs"
-                      title={tag}
-                    >
-                      + {tag}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Section 3: สถานะความพร้อม (3 Interactive Symmetrical Cards) */}
-              <div className="space-y-2.5">
-                <div className="font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-orange-400" />
-                  <span>สถานะความพร้อมในการรับงาน</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(['AVAILABLE', 'BUSY', 'INACTIVE'] as const).map((st) => {
-                    const cfg = TECH_STATUS_CONFIG[st];
-                    const isSelected = newStatus === st;
-
-                    return (
-                      <div
-                        key={st}
-                        onClick={() => setNewStatus(st)}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-[#162032] border-orange-500 ring-2 ring-orange-500/30 shadow-sm'
-                            : 'bg-[#0b0f19] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span
-                            style={{
-                              backgroundColor: cfg.bgColor,
-                              color: cfg.textColor,
-                              borderRadius: '999px',
-                              padding: '3px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                            }}
-                            className="inline-flex items-center gap-1"
-                          >
-                            <span style={{ backgroundColor: cfg.dotColor }} className="w-1.5 h-1.5 rounded-full" />
-                            <span>{cfg.label}</span>
-                          </span>
-                          {isSelected && <Check className="w-4 h-4 text-orange-400" />}
-                        </div>
-                        <div className="text-[11px] text-slate-400 leading-relaxed min-h-[32px]">{cfg.desc}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Section 4: Live Preview Card (Balanced & Modern) */}
-              <div className="p-4 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-2.5">
-                <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-slate-300">
-                    <Award className="w-3.5 h-3.5 text-orange-400" />
-                    <span>ตัวอย่างการแสดงผลบนแดชบอร์ด</span>
-                  </span>
-                  <span className="text-[10px] text-orange-400 font-medium">Live Card Preview</span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[#111827] border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-md">
-                      {getInitials(newName || 'ช่าง')}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-white truncate">
-                        {newName.trim() || 'ชื่อช่างประจำร้าน'}
-                      </div>
-                      <div className="text-xs text-slate-400 truncate mt-0.5">
-                        {newSpecialty.trim() || 'ความถนัด / สายงานหลัก'}
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
-                        <span>{newPhone.trim() || 'ยังไม่ระบุเบอร์โทร'}</span>
-                        <span>•</span>
-                        <span>{newLineId.trim() || 'ยังไม่ระบุ LINE ID'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0">
-                    <span
-                      style={{
-                        backgroundColor: TECH_STATUS_CONFIG[newStatus].bgColor,
-                        color: TECH_STATUS_CONFIG[newStatus].textColor,
-                        borderRadius: '999px',
-                        padding: '5px 12px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                      }}
-                      className="inline-flex items-center gap-1.5"
-                    >
-                      <span
-                        style={{ backgroundColor: TECH_STATUS_CONFIG[newStatus].dotColor }}
-                        className="w-1.5 h-1.5 rounded-full"
-                      />
-                      <span>{TECH_STATUS_CONFIG[newStatus].label}</span>
+                {/* Recommended Skill Tags */}
+                <div className="p-3 rounded-xl bg-[#070b14]/90 border border-slate-800/90 space-y-2">
+                  <div className="flex items-center justify-between text-slate-400">
+                    <span className="text-[11px] font-semibold flex items-center gap-1.5 text-slate-300">
+                      <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                      <span>แท็กทักษะแนะนำ (คลิกเพื่อเติมด่วน):</span>
                     </span>
-                    <span className="text-[10px] text-slate-500">⭐ 5.0 (ช่างใหม่)</span>
+                    <span className="text-[10px] text-slate-500">คลิกเพื่อเพิ่มทักษะ</span>
                   </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {COMMON_SKILL_TAGS.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => handleAppendSkill(tag, false)}
+                        className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-orange-500/15 text-slate-300 hover:text-orange-300 border border-slate-700/70 hover:border-orange-500/40 cursor-pointer transition-colors font-medium"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Status Selection */}
+                <div className="space-y-2">
+                  <div className="font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-orange-400" />
+                    <span>สถานะความพร้อมในการรับงาน</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {(['AVAILABLE', 'BUSY', 'INACTIVE'] as const).map((st) => {
+                      const cfg = TECH_STATUS_CONFIG[st];
+                      const isSelected = newStatus === st;
+                      const styleMap = {
+                        AVAILABLE: {
+                          selectedCard:
+                            'bg-gradient-to-br from-emerald-500/15 via-[#0f1d1b] to-[#070b14] border-emerald-500/70 ring-1 ring-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)]',
+                          pill: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+                          dot: 'bg-emerald-400',
+                          checkBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                        },
+                        BUSY: {
+                          selectedCard:
+                            'bg-gradient-to-br from-amber-500/15 via-[#1d180f] to-[#070b14] border-amber-500/70 ring-1 ring-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.15)]',
+                          pill: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+                          dot: 'bg-amber-400',
+                          checkBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                        },
+                        INACTIVE: {
+                          selectedCard:
+                            'bg-gradient-to-br from-slate-500/15 via-[#131824] to-[#070b14] border-slate-400/70 ring-1 ring-slate-400/30 shadow-[0_0_16px_rgba(148,163,184,0.12)]',
+                          pill: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+                          dot: 'bg-slate-400',
+                          checkBg: 'bg-slate-500/20 text-slate-200 border-slate-400/40',
+                        },
+                      }[st];
+
+                      return (
+                        <div
+                          key={st}
+                          onClick={() => setNewStatus(st)}
+                          className={`relative p-3 rounded-xl border cursor-pointer transition-all duration-200 flex flex-col justify-between overflow-hidden ${
+                            isSelected
+                              ? styleMap.selectedCard
+                              : 'bg-[#070b14]/90 border-slate-800/90 hover:border-slate-700 opacity-75 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1.5 mb-2">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ${styleMap.pill}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${styleMap.dot} ${
+                                  st === 'AVAILABLE' && isSelected ? 'animate-pulse' : ''
+                                }`}
+                              />
+                              <span>{cfg.label}</span>
+                            </span>
+                            {isSelected && (
+                              <span
+                                className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${styleMap.checkBg}`}
+                              >
+                                <Check className="w-3 h-3" />
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-400 leading-relaxed">{cfg.desc}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Branch Pill + Live Preview + AI Dispatch */}
+              <div className="lg:col-span-5 flex flex-col justify-between space-y-3.5">
+                {/* Branch / Project Info Pill */}
+                <div className="flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[#070b14] border border-slate-800">
+                  <div className="flex items-center gap-2 text-slate-300 min-w-0">
+                    <Building2 className="w-4 h-4 text-orange-400 shrink-0" />
+                    <span className="font-semibold text-white truncate">{project.name}</span>
+                    <span className="text-slate-500 text-[11px] truncate">({project.branchName || 'สำนักงานใหญ่'})</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-orange-300 font-medium border border-slate-700/60 shrink-0">
+                    {project.category || 'งานบริการและซ่อมบำรุง'}
+                  </span>
+                </div>
+
+                {/* Live Preview Card */}
+                <div className="p-4 rounded-xl bg-[#070b14] border border-slate-800 space-y-3 flex-1 flex flex-col justify-center">
+                  <div className="text-[11px] font-semibold text-slate-400 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-slate-300">
+                      <Award className="w-3.5 h-3.5 text-orange-400" />
+                      <span>ตัวอย่างการแสดงผลบนแดชบอร์ด</span>
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 font-medium">
+                      Live Card Preview
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-[#111827] border border-slate-700/80 space-y-3 shadow-md">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-md">
+                          {getInitials(newName || 'ช่าง')}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-white truncate">
+                            {newName.trim() || 'ชื่อช่างประจำร้าน'}
+                          </div>
+                          <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                            {newSpecialty.trim() || 'ความถนัด / สายงานหลัก'}
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          backgroundColor: TECH_STATUS_CONFIG[newStatus].bgColor,
+                          color: TECH_STATUS_CONFIG[newStatus].textColor,
+                          borderRadius: '999px',
+                          padding: '4px 10px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                        }}
+                        className="inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                      >
+                        <span
+                          style={{ backgroundColor: TECH_STATUS_CONFIG[newStatus].dotColor }}
+                          className="w-1.5 h-1.5 rounded-full"
+                        />
+                        <span>{TECH_STATUS_CONFIG[newStatus].label}</span>
+                      </span>
+                    </div>
+
+                    <div className="px-3 py-2 rounded-lg bg-[#070b14]/80 border border-slate-800 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 truncate">{newPhone.trim() || 'ยังไม่ระบุเบอร์โทร'}</span>
+                      <span className="text-slate-600">•</span>
+                      <span className="text-emerald-400 truncate">{newLineId.trim() || 'ยังไม่ระบุ LINE ID'}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/80">
+                      <span className="text-slate-500">คะแนนช่างเริ่มต้น</span>
+                      <span className="text-amber-400 font-semibold">⭐ 5.0 (ช่างใหม่)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* AI Dispatch Box */}
+                <div className="p-3.5 rounded-xl bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/25 space-y-1">
+                  <div className="text-xs font-bold text-orange-300 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                    <span>ระบบจ่ายงานอัตโนมัติ (AI Dispatch)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    ระบบแชทบอทจะคำนวณคิวว่างและทักษะช่าง เพื่อจ่ายงานเข้า LINE ทันทีที่ลูกค้ากดจองคิว
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Modal Footer (Balanced & Symmetrical) */}
-            <div className="p-4 border-t border-slate-800 bg-[#0f172a] flex flex-col sm:flex-row items-center justify-between gap-3">
+            {/* Modal Footer */}
+            <div className="px-5 py-3.5 border-t border-slate-800/80 bg-[#0f172a] flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>ข้อมูลช่างจะเชื่อมต่อกับระบบจ่ายงานและแชทบอททันที</span>
               </div>
               <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-medium cursor-pointer transition-colors"
+                  className="px-4 py-2 rounded-xl bg-[#070b14] border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-medium cursor-pointer transition-colors"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="button"
                   onClick={handleAddTech}
-                  className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/25"
                 >
                   <Plus className="w-4 h-4" />
                   <span>เพิ่มช่างเข้าสู่ระบบ</span>
@@ -900,14 +984,14 @@ export function TechniciansTab({ project }: Props) {
         </div>
       )}
 
-      {/* Modal: แก้ไขข้อมูลช่าง (Detailed Rich Edit Modal with Inactive Toggle - Symmetrical) */}
+      {/* Modal: แก้ไขข้อมูลช่าง (2-Column Wide Layout — No Scrollbar) */}
       {editingTech && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-[#111827] rounded-2xl border border-slate-800 shadow-2xl max-w-2xl w-full overflow-hidden text-white flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-[#0d1220] rounded-2xl border border-slate-800/90 shadow-2xl max-w-4xl w-full overflow-hidden text-white flex flex-col max-lg:max-h-[92vh] animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-[#0f172a]">
+            <div className="px-5 py-4 border-b border-slate-800/80 flex items-center justify-between bg-gradient-to-r from-[#0f172a] via-[#111827] to-[#0f172a]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0">
                   <Pencil className="w-5 h-5" />
                 </div>
                 <div>
@@ -926,145 +1010,167 @@ export function TechniciansTab({ project }: Props) {
               </button>
             </div>
 
-            {/* Modal Form Content */}
-            <div className="p-6 space-y-4 overflow-y-auto text-xs">
-              {/* Basic Info */}
-              <div className="space-y-3">
-                <label className="font-semibold text-slate-300 block mb-1">
-                  ชื่อช่าง / ชื่อเรียกในการรับงาน <span className="text-orange-400">*</span>
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-orange-500 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
-                    {getInitials(editName || editingTech.name)}
+            {/* Modal Form Content — 2 Columns */}
+            <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 text-xs max-lg:overflow-y-auto">
+              {/* Left Column */}
+              <div className="lg:col-span-7 space-y-4">
+                <div>
+                  <label className="font-semibold text-slate-300 block mb-1.5">
+                    ชื่อช่าง / ชื่อเรียกในการรับงาน <span className="text-orange-400">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                      {getInitials(editName || editingTech.name)}
+                    </div>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="flex-1 h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
+                    />
                   </div>
-                  <input
-                    type="text"
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="flex-1 h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
-                  />
                 </div>
-              </div>
 
-              {/* Phone & LINE ID (Balanced 2 Cols) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="font-semibold text-slate-300 block mb-1.5">เบอร์โทรศัพท์ติดต่อ</label>
-                  <input
-                    type="text"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="08X-XXX-XXXX"
-                    className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">เบอร์โทรศัพท์ติดต่อ</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="08X-XXX-XXXX"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-semibold text-slate-300 block mb-1">LINE ID สำหรับรับงาน</label>
+                    <input
+                      type="text"
+                      value={editLineId}
+                      onChange={(e) => setEditLineId(e.target.value)}
+                      placeholder="@line_tech"
+                      className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="font-semibold text-slate-300 block mb-1.5">LINE ID สำหรับรับงาน</label>
-                  <input
-                    type="text"
-                    value={editLineId}
-                    onChange={(e) => setEditLineId(e.target.value)}
-                    placeholder="@line_tech"
-                    className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
 
-              {/* Specialty & Skill Tags */}
-              <div className="space-y-2.5">
-                <label className="font-semibold text-slate-300 block mb-1">
-                  ความถนัด / สายงานหลัก
-                </label>
-                <input
-                  type="text"
-                  value={editSpecialty}
-                  onChange={(e) => setEditSpecialty(e.target.value)}
-                  className="w-full h-[42px] px-3.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
-                />
-                <div className="p-3 rounded-xl bg-[#0b0f19] border border-slate-800 space-y-2">
-                  <span className="text-[11px] text-slate-400 block font-medium">แท็กทักษะแนะนำ (คลิกเพื่อเติมด่วน):</span>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {COMMON_SKILL_TAGS.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => handleAppendSkill(tag, true)}
-                        className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-orange-500/15 text-slate-300 hover:text-orange-300 border border-slate-700/70 hover:border-orange-500/40 text-center truncate cursor-pointer transition-colors font-medium shadow-2xs"
-                        title={tag}
-                      >
-                        + {tag}
-                      </button>
-                    ))}
+                <div className="space-y-2">
+                  <label className="font-semibold text-slate-300 block">ความถนัด / สายงานหลัก</label>
+                  <input
+                    type="text"
+                    value={editSpecialty}
+                    onChange={(e) => setEditSpecialty(e.target.value)}
+                    className="w-full h-[38px] px-3 rounded-xl bg-[#070b14] border border-slate-700/80 text-slate-100 focus:border-orange-500 focus:outline-none transition-colors"
+                  />
+                  <div className="p-3 rounded-xl bg-[#070b14]/90 border border-slate-800/90 space-y-2">
+                    <span className="text-[11px] text-slate-400 block font-medium">แท็กทักษะแนะนำ (คลิกเพื่อเติมด่วน):</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {COMMON_SKILL_TAGS.map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => handleAppendSkill(tag, true)}
+                          className="text-[11px] px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-orange-500/15 text-slate-300 hover:text-orange-300 border border-slate-700/70 hover:border-orange-500/40 cursor-pointer transition-colors font-medium"
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Interactive Status Radio Selection (3 States including INACTIVE) */}
-              <div className="space-y-2">
-                <label className="font-semibold text-slate-300 block mb-1">
-                  สถานะความพร้อมในการรับงาน
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {(['AVAILABLE', 'BUSY', 'INACTIVE'] as const).map((st) => {
-                    const cfg = TECH_STATUS_CONFIG[st];
-                    const isSelected = editStatus === st;
+              {/* Right Column */}
+              <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <label className="font-semibold text-slate-300 block">สถานะความพร้อมในการรับงาน</label>
+                  <div className="space-y-2">
+                    {(['AVAILABLE', 'BUSY', 'INACTIVE'] as const).map((st) => {
+                      const cfg = TECH_STATUS_CONFIG[st];
+                      const isSelected = editStatus === st;
+                      const styleMap = {
+                        AVAILABLE: {
+                          selectedCard:
+                            'bg-gradient-to-br from-emerald-500/15 via-[#0f1d1b] to-[#070b14] border-emerald-500/70 ring-1 ring-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.15)]',
+                          pill: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+                          dot: 'bg-emerald-400',
+                          checkBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+                        },
+                        BUSY: {
+                          selectedCard:
+                            'bg-gradient-to-br from-amber-500/15 via-[#1d180f] to-[#070b14] border-amber-500/70 ring-1 ring-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.15)]',
+                          pill: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+                          dot: 'bg-amber-400',
+                          checkBg: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
+                        },
+                        INACTIVE: {
+                          selectedCard:
+                            'bg-gradient-to-br from-slate-500/15 via-[#131824] to-[#070b14] border-slate-400/70 ring-1 ring-slate-400/30 shadow-[0_0_16px_rgba(148,163,184,0.12)]',
+                          pill: 'bg-slate-500/15 text-slate-300 border-slate-500/30',
+                          dot: 'bg-slate-400',
+                          checkBg: 'bg-slate-500/20 text-slate-200 border-slate-400/40',
+                        },
+                      }[st];
 
-                    return (
-                      <div
-                        key={st}
-                        onClick={() => setEditStatus(st)}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                          isSelected
-                            ? 'bg-[#162032] border-orange-500 ring-2 ring-orange-500/30 shadow-sm'
-                            : 'bg-[#0b0f19] border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span
-                            style={{
-                              backgroundColor: cfg.bgColor,
-                              color: cfg.textColor,
-                              borderRadius: '999px',
-                              padding: '3px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                            }}
-                            className="inline-flex items-center gap-1"
-                          >
-                            <span style={{ backgroundColor: cfg.dotColor }} className="w-1.5 h-1.5 rounded-full" />
-                            <span>{cfg.label}</span>
-                          </span>
-                          {isSelected && <Check className="w-4 h-4 text-orange-400" />}
+                      return (
+                        <div
+                          key={st}
+                          onClick={() => setEditStatus(st)}
+                          className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 flex items-center justify-between gap-3 ${
+                            isSelected
+                              ? styleMap.selectedCard
+                              : 'bg-[#070b14]/90 border-slate-800/90 hover:border-slate-700 opacity-75 hover:opacity-100'
+                          }`}
+                        >
+                          <div className="space-y-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border whitespace-nowrap ${styleMap.pill}`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${styleMap.dot} ${
+                                  st === 'AVAILABLE' && isSelected ? 'animate-pulse' : ''
+                                }`}
+                              />
+                              <span>{cfg.label}</span>
+                            </span>
+                            <div className="text-[11px] text-slate-400 leading-snug">{cfg.desc}</div>
+                          </div>
+                          {isSelected && (
+                            <span
+                              className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${styleMap.checkBg}`}
+                            >
+                              <Check className="w-3 h-3" />
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-slate-400 leading-relaxed min-h-[32px]">{cfg.desc}</div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              {/* Current Active Jobs badge */}
-              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 flex items-center justify-between">
-                <span className="text-slate-400">จำนวนใบงานที่กำลังถือครองอยู่:</span>
-                <span className="font-bold text-white bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 font-mono">
-                  {editingTech.activeJobs} งาน
-                </span>
+                {/* Current Active Jobs badge */}
+                <div className="p-3.5 rounded-xl bg-[#070b14] border border-slate-800 flex items-center justify-between">
+                  <span className="text-slate-400">จำนวนใบงานที่กำลังถือครองอยู่:</span>
+                  <span className="font-bold text-white bg-slate-800 px-3 py-1 rounded-lg border border-slate-700 font-mono">
+                    {editingTech.activeJobs} งาน
+                  </span>
+                </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-800 bg-[#0f172a] flex items-center justify-end gap-2.5">
+            <div className="px-5 py-3.5 border-t border-slate-800/80 bg-[#0f172a] flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setEditingTech(null)}
-                className="px-4 py-2 rounded-xl bg-[#0b0f19] border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-medium cursor-pointer transition-colors"
+                className="px-4 py-2 rounded-xl bg-[#070b14] border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-medium cursor-pointer transition-colors"
               >
                 ยกเลิก
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 shadow-sm"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/25"
               >
                 <Check className="w-4 h-4" />
                 <span>บันทึกการเปลี่ยนแปลง</span>
