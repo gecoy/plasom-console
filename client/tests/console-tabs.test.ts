@@ -8,6 +8,8 @@ import {
   filterReviewsByRating,
   clampRating,
   avatarInitial,
+  isDemoProject,
+  formatClock,
 } from '../src/console/tabs/tabUtils.ts'
 import type { ChatThread, SatisfactionItem } from '../src/console/mockConsoleData.ts'
 
@@ -81,4 +83,16 @@ test('avatarInitial: ข้าม "คุณ" และสระหน้า', (
   assert.equal(avatarInitial('ไก่'), 'ก')
   assert.equal(avatarInitial('john'), 'J')
   assert.equal(avatarInitial('   '), '?')
+})
+
+test('isDemoProject: แยกร้านตัวอย่างออกจากร้านจริง', () => {
+  assert.equal(isDemoProject('proj-air-rama2'), true)
+  assert.equal(isDemoProject('proj-air-rama2-cmwu79'), true)
+  assert.equal(isDemoProject('cmf0x1y2z0000abcd'), false)
+  assert.equal(isDemoProject(''), false)
+})
+
+test('formatClock: เติมศูนย์ข้างหน้า', () => {
+  assert.equal(formatClock(new Date(2026, 10, 25, 9, 5)), '09:05')
+  assert.equal(formatClock(new Date(2026, 10, 25, 14, 30)), '14:30')
 })
