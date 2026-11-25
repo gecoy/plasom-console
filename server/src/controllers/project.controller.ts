@@ -684,3 +684,84 @@ export async function getProjectReviews(
     next(err);
   }
 }
+
+
+export async function createProjectTicket(req: any, res: any, next: any): Promise<void> {
+  try {
+    const ownerId = getOwnerId(req, res);
+    if (!ownerId) return;
+
+    const projectId = req.params.projectId;
+    if (!(await findOwnedProject(projectId, ownerId))) {
+      res.status(404).json({ success: false, error: "ไม่พบร้านค้าในบัญชีนี้" });
+      return;
+    }
+
+    const body = req.body || {};
+    const now = new Date();
+    const ymd = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const rand = randomBytes(2).toString("hex").toUpperCase();
+    const trackingCode = `CC-${ymd}-${rand}`;
+
+    const brand = String(body.brand || body.subject || "งานแจ้งซ่อมทั่วไป").trim().slice(0, 100);
+    const symptom = String(body.symptom || brand).trim().slice(0, 500);
+    const address = String(body.address || "ไม่ระบุที่อยู่").trim().slice(0, 500);
+    const customerName = String(body.customerName || "ลูกค้าหน้าร้าน").trim().slice(0, 100);
+    const digits = String(body.customerPhone || "").replace(/\D/g, "").slice(0, 10);
+    const customerPhone = digits.length >= 9 ? digits : "0800000000";
+    const preferredDate = body.preferredDate && !isNaN(new Date(body.preferredDate).getTime())
+      ? new Date(body.preferredDate)
+      : now;
+    const note = body.note ? String(body.note).trim().slice(0, 500) : null;
+    const extraFields = body.extraFields && typeof body.extraFields === "object" ? body.extraFields : {};
+
+    const created = await prisma.$transaction(async (tx) => {
+      const t = await tx.ticket.create({
+        data: {
+          trackingCode,
+          projectId,
+          service: "REPAIR",
+          brand,
+          symptom,
+          address,
+          preferredDate,
+          note,
+          extraFields,
+          customerName,
+          customerPhone,
+        },
+      });
+
+      await tx.statusLog.create({
+        data: {
+          ticketId: t.id,
+          status: TicketStatus.SUBMITTED,
+          note: "สร้างใบงานผ่านหน้า Console",
+        },
+      });
+
+      await tx.message.createMany({
+        data: [
+          {
+            ticketId: t.id,
+            text: `[${brand}] อาการ: ${symptom}`,
+            sender: "CUSTOMER",
+            fromStaff: false,
+          },
+          {
+            ticketId: t.id,
+            text: `รับเรื่องแจ้งซ่อมเรียบร้อยค่ะ รหัสติดตามงานคือ ${trackingCode}`,
+            sender: "BOT",
+            fromStaff: false,
+          },
+        ],
+      });
+
+      return t;
+    });
+
+    res.status(201).json({ success: true, data: created });
+  } catch (err) {
+    next(err);
+  }
+}

@@ -185,9 +185,7 @@ export async function createManualTicketInDb(
     extraDetails?: Record<string, string>;
   }
 ) {
-  const res = await api.post('/tickets', {
-    projectId,
-    service: 'REPAIR',
+  const res = await api.post(`/projects/${projectId}/tickets`, {
     brand: input.subject || 'แจ้งซ่อมทั่วไป',
     symptom: input.symptom || input.subject,
     address: input.address || 'ระบุในใบงาน',
@@ -195,7 +193,7 @@ export async function createManualTicketInDb(
       ? new Date(input.preferredDate).toISOString()
       : new Date().toISOString(),
     customerName: input.customerName,
-    customerPhone: input.customerPhone.replace(/[^0-9]/g, '') || '0800000000',
+    customerPhone: input.customerPhone,
     note: input.timeSlot || '',
     extraFields: {
       ...(input.extraDetails || {}),
@@ -206,6 +204,7 @@ export async function createManualTicketInDb(
   });
   return res.data?.data;
 }
+
 
 export async function updateProjectTicketApi(
   projectId: string,
