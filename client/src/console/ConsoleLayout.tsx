@@ -52,6 +52,19 @@ interface NavMenuItem {
   icon: LucideIcon;
   badge?: string | number;
 }
+function safeBadgeValue(val: unknown): string | number {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  if (typeof val === 'string') return val;
+  if (val && typeof val === 'object') {
+    const obj = val as Record<string, unknown>;
+    if (typeof obj.averageRating === 'number') {
+      return obj.averageRating > 0 ? `★${obj.averageRating.toFixed(1)}` : 0;
+    }
+    return Number(obj.total ?? obj.count ?? 0) || 0;
+  }
+  return 0;
+}
+
 
 export function ConsoleLayout() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -232,23 +245,23 @@ export function ConsoleLayout() {
   const ticketsCount = hasCurrentProjectCounts
     ? liveCounts.tickets
     : isLiveProject
-    ? '—'
-    : mockTicketsCount;
+      ? '—'
+      : mockTicketsCount;
   const threadsCount = hasCurrentProjectCounts
     ? liveCounts.threads
     : isLiveProject
-    ? '—'
-    : mockThreadsCount;
+      ? '—'
+      : mockThreadsCount;
   const avgCsat = hasCurrentProjectCounts
     ? liveCounts.avgCsat
     : isLiveProject
-    ? undefined
-    : mockAvgCsat;
+      ? undefined
+      : mockAvgCsat;
   const techsCount = hasCurrentProjectCounts
     ? liveCounts.techs
     : isLiveProject
-    ? '—'
-    : mockTechsCount;
+      ? '—'
+      : mockTechsCount;
 
   const menuItems: NavMenuItem[] = [
     {
@@ -265,17 +278,22 @@ export function ConsoleLayout() {
       icon: MessageSquareText,
       badge: threadsCount,
     },
+
     {
       key: 'satisfaction',
       label: 'ความพึงพอใจลูกค้า (CSAT)',
       shortLabel: 'รีวิว CSAT',
       icon: Star,
-      badge: isLiveProject && !hasCurrentProjectCounts
-        ? '—'
-        : avgCsat
-        ? `★${avgCsat}`
-        : 0,
+      badge:
+        isLiveProject && !hasCurrentProjectCounts
+          ? '—'
+          : avgCsat && typeof avgCsat === 'object'
+            ? safeBadgeValue(avgCsat)
+            : avgCsat
+              ? `★${avgCsat}`
+              : 0,
     },
+
     {
       key: 'technicians',
       label: 'ทีมช่างและตั้งค่าบอท',
@@ -311,14 +329,12 @@ export function ConsoleLayout() {
   return (
     <div className="min-h-screen flex bg-[#070b14] text-slate-100 font-sans selection:bg-orange-500 selection:text-white">
       <aside
-        className={`hidden lg:flex flex-col shrink-0 bg-[#0b101e]/95 border-r border-slate-800/90 backdrop-blur-xl transition-[width] duration-300 ease-out sticky top-0 h-screen z-30 ${
-          sidebarCollapsed ? 'w-20' : 'w-72'
-        }`}
+        className={`hidden lg:flex flex-col shrink-0 bg-[#0b101e]/95 border-r border-slate-800/90 backdrop-blur-xl transition-[width] duration-300 ease-out sticky top-0 h-screen z-30 ${sidebarCollapsed ? 'w-20' : 'w-72'
+          }`}
       >
         <div
-          className={`h-16 border-b border-slate-800/90 flex items-center relative ${
-            sidebarCollapsed ? 'px-2 justify-center' : 'px-4 justify-between gap-2'
-          }`}
+          className={`h-16 border-b border-slate-800/90 flex items-center relative ${sidebarCollapsed ? 'px-2 justify-center' : 'px-4 justify-between gap-2'
+            }`}
         >
           <Link
             to="/projects"
@@ -347,11 +363,10 @@ export function ConsoleLayout() {
               setSwitcherOpen(false);
             }}
             aria-label={sidebarCollapsed ? 'ขยายแถบเมนู' : 'ย่อแถบเมนู'}
-            className={`bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors cursor-pointer shrink-0 ${
-              sidebarCollapsed
+            className={`bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700 transition-colors cursor-pointer shrink-0 ${sidebarCollapsed
                 ? 'absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center shadow-md z-40'
                 : 'p-1.5 rounded-lg'
-            }`}
+              }`}
           >
             {sidebarCollapsed ? (
               <ChevronRight className="w-3.5 h-3.5" />
@@ -385,9 +400,8 @@ export function ConsoleLayout() {
                   </div>
                 </div>
                 <ChevronDown
-                  className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${
-                    switcherOpen ? 'rotate-180 text-orange-400' : ''
-                  }`}
+                  className={`w-4 h-4 text-slate-400 shrink-0 transition-transform duration-200 ${switcherOpen ? 'rotate-180 text-orange-400' : ''
+                    }`}
                 />
               </button>
             </>
@@ -404,9 +418,8 @@ export function ConsoleLayout() {
 
           {switcherOpen && (
             <div
-              className={`absolute z-50 mt-2 rounded-2xl bg-[#0e1526] border border-slate-700/90 shadow-2xl p-2 space-y-1 ${
-                sidebarCollapsed ? 'left-20 top-2 w-68' : 'left-3 right-3'
-              }`}
+              className={`absolute z-50 mt-2 rounded-2xl bg-[#0e1526] border border-slate-700/90 shadow-2xl p-2 space-y-1 ${sidebarCollapsed ? 'left-20 top-2 w-68' : 'left-3 right-3'
+                }`}
             >
               <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-slate-400">
                 โปรเจกต์ของคุณ ({projects.length})
@@ -419,11 +432,10 @@ export function ConsoleLayout() {
                       key={p.id}
                       type="button"
                       onClick={() => handleSelectProject(p.id)}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                        isSelected
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${isSelected
                           ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30 font-semibold'
                           : 'text-slate-300 hover:bg-slate-800/80'
-                      }`}
+                        }`}
                     >
                       <div className="min-w-0">
                         <div className="truncate font-semibold text-white">{p.name}</div>
@@ -468,13 +480,11 @@ export function ConsoleLayout() {
                 type="button"
                 title={sidebarCollapsed ? item.label : undefined}
                 onClick={() => setActiveTab(item.key)}
-                className={`relative w-full flex items-center ${
-                  sidebarCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3.5 py-2.5'
-                } rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${
-                  active
+                className={`relative w-full flex items-center ${sidebarCollapsed ? 'justify-center px-2 py-3' : 'justify-between px-3.5 py-2.5'
+                  } rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer ${active
                     ? 'bg-gradient-to-r from-orange-500/20 via-orange-500/10 to-transparent text-white border border-orange-500/30 shadow-[0_4px_20px_-6px_rgba(249,115,22,0.4)]'
                     : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-100 border border-transparent'
-                }`}
+                  }`}
               >
                 {active && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full bg-orange-400 shadow-[0_0_12px_2px_rgba(251,146,60,0.9)]" />
@@ -482,9 +492,8 @@ export function ConsoleLayout() {
 
                 <span className="flex items-center gap-3 min-w-0">
                   <Icon
-                    className={`w-4.5 h-4.5 shrink-0 ${
-                      active ? 'text-orange-400' : 'text-slate-400'
-                    }`}
+                    className={`w-4.5 h-4.5 shrink-0 ${active ? 'text-orange-400' : 'text-slate-400'
+                      }`}
                   />
                   {!sidebarCollapsed && <span className="truncate text-xs sm:text-sm">{item.label}</span>}
                 </span>
@@ -498,13 +507,12 @@ export function ConsoleLayout() {
                   ) : (
                     <span
                       title={badgeFailure ? 'โหลดตัวเลขสรุปไม่สำเร็จ' : undefined}
-                      className={`px-2 py-0.5 rounded-full text-[11px] font-mono shrink-0 ${
-                        active
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-mono shrink-0 ${active
                           ? 'bg-orange-500 text-white font-semibold'
                           : 'bg-slate-800/90 text-slate-400'
-                      }`}
+                        }`}
                     >
-                      {item.badge}
+                      {safeBadgeValue(item.badge)}
                     </span>
                   )
                 )}
@@ -525,11 +533,10 @@ export function ConsoleLayout() {
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                 <div
-                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${
-                    currentProject.chatbotConnected
+                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${currentProject.chatbotConnected
                       ? 'bg-blue-500/10 border-blue-500/25 text-blue-300'
                       : 'bg-slate-900 border-slate-800 text-slate-500'
-                  }`}
+                    }`}
                 >
                   <Bot className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">
@@ -537,11 +544,10 @@ export function ConsoleLayout() {
                   </span>
                 </div>
                 <div
-                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${
-                    currentProject.voicebotConnected
+                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${currentProject.voicebotConnected
                       ? 'bg-purple-500/10 border-purple-500/25 text-purple-300'
                       : 'bg-slate-900 border-slate-800 text-slate-500'
-                  }`}
+                    }`}
                 >
                   <Mic className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">
@@ -662,11 +668,10 @@ export function ConsoleLayout() {
                         setActiveTab(item.key);
                         setMobileDrawerOpen(false);
                       }}
-                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium cursor-pointer ${
-                        active
+                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-medium cursor-pointer ${active
                           ? 'bg-orange-500 text-white shadow-md'
                           : 'text-slate-300 hover:bg-slate-800/70'
-                      }`}
+                        }`}
                     >
                       <span className="flex items-center gap-3">
                         <Icon className="w-4 h-4" />
@@ -681,11 +686,10 @@ export function ConsoleLayout() {
                         ) : (
                           <span
                             title={badgeFailure ? 'โหลดตัวเลขสรุปไม่สำเร็จ' : undefined}
-                            className={`px-2 py-0.5 rounded-full text-xs font-mono ${
-                              active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                            }`}
+                            className={`px-2 py-0.5 rounded-full text-xs font-mono ${active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                              }`}
                           >
-                            {item.badge}
+                            {safeBadgeValue(item.badge)}
                           </span>
                         )
                       )}
@@ -859,9 +863,8 @@ export function ConsoleLayout() {
                   key={item.key}
                   type="button"
                   onClick={() => setActiveTab(item.key)}
-                  className={`relative flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-colors cursor-pointer ${
-                    active ? 'text-orange-400 bg-orange-500/10' : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className={`relative flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-colors cursor-pointer ${active ? 'text-orange-400 bg-orange-500/10' : 'text-slate-400 hover:text-slate-200'
+                    }`}
                 >
                   {active && (
                     <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-8 h-[2.5px] rounded-full bg-orange-400 shadow-[0_0_10px_2px_rgba(251,146,60,0.9)]" />
