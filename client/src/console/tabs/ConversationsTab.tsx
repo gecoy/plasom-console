@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
 import { ChatThread, MOCK_THREADS, ProjectItem } from '../mockConsoleData';
-import { fetchProjectThreadsApi } from '../consoleApi';
+import { fetchProjectThreadsApi, readCachedThreads } from '../consoleApi';
 import {
   avatarInitial,
   belongsToProject,
@@ -27,18 +27,20 @@ export function ConversationsTab({ project }: Props) {
 
 function ConversationsTabContent({ project }: Props) {
   const isDemo = isDemoProject(project.id);
-  const demoThreads = isDemo
+  const initialThreads = isDemo
     ? MOCK_THREADS.filter((t) => belongsToProject(t.projectId, project.id))
-    : [];
+    : readCachedThreads(project.id);
 
-  // ร้านจริงเริ่มจากค่าว่าง + loading ห้ามเอาแชทปลอมมาโชว์คั่นเวลา
-  const [threads, setThreads] = useState<ChatThread[]>(demoThreads);
-  const [loading, setLoading] = useState(!isDemo);
+  const [threads, setThreads] = useState<ChatThread[]>(initialThreads);
+  const [loading, setLoading] = useState(!isDemo && initialThreads.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(() => (isDemo ? new Date() : null));
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(() =>
+    isDemo || initialThreads.length > 0 ? new Date() : null
+  );
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string>(demoThreads[0]?.id || '');
+  const [selectedId, setSelectedId] = useState<string>(initialThreads[0]?.id || '');
+
   const [staffDrafts, setStaffDrafts] = useState<Record<string, StaffDraft[]>>({});
   const [replyText, setReplyText] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
@@ -251,9 +253,8 @@ function ConversationsTabContent({ project }: Props) {
                     type="button"
                     onClick={() => setSelectedId(th.id)}
                     aria-current={activeThread?.id === th.id}
-                    className={`w-full text-left p-4 hover:bg-slate-800/60 transition-colors cursor-pointer border-l-2 ${
-                      activeThread?.id === th.id ? 'bg-slate-800/90 border-orange-500' : 'border-transparent'
-                    }`}
+                    className={`w-full text-left p-4 hover:bg-slate-800/60 transition-colors cursor-pointer border-l-2 ${activeThread?.id === th.id ? 'bg-slate-800/90 border-orange-500' : 'border-transparent'
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-bold text-sm text-white truncate">{th.customerName}</span>
@@ -324,11 +325,10 @@ function ConversationsTabContent({ project }: Props) {
                           {isBot ? 'บอท' : activeThread.customerName}
                         </span>
                         <div
-                          className={`max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                            isBot
-                              ? 'bg-orange-500 text-white rounded-br-sm'
-                              : 'bg-[#111827] border border-slate-700 text-slate-100 rounded-bl-sm'
-                          }`}
+                          className={`max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isBot
+                            ? 'bg-orange-500 text-white rounded-br-sm'
+                            : 'bg-[#111827] border border-slate-700 text-slate-100 rounded-bl-sm'
+                            }`}
                         >
                           <div className="whitespace-pre-wrap break-words">{m.text}</div>
                           <div className="text-[10px] opacity-70 mt-1 text-right">{m.time}</div>

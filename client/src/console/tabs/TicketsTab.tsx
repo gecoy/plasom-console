@@ -59,7 +59,10 @@ import {
   updateProjectTicketApi,
   mapBackendStatusToUi,
   mapUiStatusToBackend,
+  readCachedTickets,
+  readCachedTechnicians,
 } from '../consoleApi';
+
 import type { TechnicianItem } from '../mockConsoleData';
 
 interface Props {
@@ -667,11 +670,60 @@ function CustomDarkSingleDatePicker({
   );
 }
 
-export function TicketsTab({ project }: Props) {
-  // Master tickets state (real data from backend API)
-  const [tickets, setTickets] = useState<ExtendedTicket[]>([]);
+function mapRawTicketToExtended(t: any, projectId: string): ExtendedTicket {
+  const extra = t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {};
+  return {
+    id: t.id,
+    trackingCode: t.trackingCode,
+    projectId,
+    customerName: t.customerName,
+    customerPhone: t.customerPhone,
+    channel: extra._channel || extra.channel || 'LINE OA',
+    subject: t.brand || 'งานแจ้งซ่อม',
+    symptom: t.symptom,
+    preferredDate: t.preferredDate ? String(t.preferredDate).slice(0, 10) : '',
+    timeSlot: extra._timeSlot || t.note || '09:00 - 12:00 น. (ช่วงเช้า)',
+    priority: extra._priority || 'NORMAL',
+    address: t.address || '',
+    status: mapBackendStatusToUi(t.status, Boolean(t.technician?.name || t.technicianId)),
+    assignedTechName: t.technician?.name || undefined,
+    extraDetails: extra,
+    csatRating: t.review?.rating,
+    csatComment: t.review?.comment,
+    internalNotes: [
+      {
+        id: `note-${t.id}`,
+        author: 'ระบบฐานข้อมูล',
+        text: `รับใบงานเข้าระบบ (${t.trackingCode})`,
+        time: t.createdAt ? new Date(t.createdAt).toLocaleDateString('th-TH') : 'วันนี้',
+      },
+    ],
+  };
+}
 
-  const [dbTechs, setDbTechs] = useState<(TechnicianItem & { id: string })[]>([]);
+function mapRawTechToItem(tc: any, projectId: string): TechnicianItem & { id: string } {
+  return {
+    id: tc.id,
+    projectId,
+    name: tc.name,
+    specialty: tc.specialty || 'ช่างประจำร้าน',
+    activeJobs: Number(tc.activeJobs ?? tc._count?.tickets ?? 0),
+    status: tc.status === 'BUSY' ? 'BUSY' : 'AVAILABLE',
+  };
+}
+
+export function TicketsTab({ project }: Props) {
+  const [tickets, setTickets] = useState<ExtendedTicket[]>(() =>
+    project.id.startsWith('proj-')
+      ? []
+      : readCachedTickets(project.id).map((t: any) => mapRawTicketToExtended(t, project.id))
+  );
+
+  const [dbTechs, setDbTechs] = useState<(TechnicianItem & { id: string })[]>(() =>
+    project.id.startsWith('proj-')
+      ? []
+      : readCachedTechnicians(project.id).map((tc: any) => mapRawTechToItem(tc, project.id))
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -683,51 +735,8 @@ export function TicketsTab({ project }: Props) {
           fetchProjectTechniciansApi(project.id),
         ]);
         if (cancelled) return;
-
-        setDbTechs(
-          rawTechs.map((tc: any) => ({
-            id: tc.id,
-            projectId: project.id,
-            name: tc.name,
-            specialty: tc.specialty || 'ช่างประจำร้าน',
-            activeJobs: Number(tc.activeJobs ?? tc._count?.tickets ?? 0),
-            status: tc.status === 'BUSY' ? 'BUSY' : 'AVAILABLE',
-          }))
-        );
-
-        setTickets(
-          rawTickets.map((t: any) => {
-            const extra =
-              t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {};
-            return {
-              id: t.id,
-              trackingCode: t.trackingCode,
-              projectId: project.id,
-              customerName: t.customerName,
-              customerPhone: t.customerPhone,
-              channel: extra._channel || extra.channel || 'LINE OA',
-              subject: t.brand || 'งานแจ้งซ่อม',
-              symptom: t.symptom,
-              preferredDate: t.preferredDate ? String(t.preferredDate).slice(0, 10) : '',
-              timeSlot: extra._timeSlot || t.note || '09:00 - 12:00 น. (ช่วงเช้า)',
-              priority: extra._priority || 'NORMAL',
-              address: t.address || '',
-              status: mapBackendStatusToUi(t.status, Boolean(t.technician?.name || t.technicianId)),
-              assignedTechName: t.technician?.name || undefined,
-              extraDetails: extra,
-              csatRating: t.review?.rating,
-              csatComment: t.review?.comment,
-              internalNotes: [
-                {
-                  id: `note-${t.id}`,
-                  author: 'ระบบฐานข้อมูล',
-                  text: `รับใบงานเข้าระบบ (${t.trackingCode})`,
-                  time: t.createdAt ? new Date(t.createdAt).toLocaleDateString('th-TH') : 'วันนี้',
-                },
-              ],
-            };
-          })
-        );
+        setDbTechs(rawTechs.map((tc: any) => mapRawTechToItem(tc, project.id)));
+        setTickets(rawTickets.map((t: any) => mapRawTicketToExtended(t, project.id)));
       } catch {
         // fallback
       }
@@ -737,6 +746,7 @@ export function TicketsTab({ project }: Props) {
       cancelled = true;
     };
   }, [project.id]);
+
 
   // View Switcher (ตารางใบงาน, ปฏิทินงาน, แดชบอร์ดสถิติ)
   const [activeView, setActiveView] = useState<'table' | 'calendar' | 'dashboard'>('table');

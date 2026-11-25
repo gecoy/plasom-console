@@ -48,6 +48,46 @@ const DEFAULT_FEATURES: BotFeatures = {
   humanHandover: false,
 };
 
+// ==========================================
+// Helper: Fast Local Cache (0ms Instant Load)
+// ==========================================
+function readCache<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+export function readCachedTickets(projectId: string): any[] {
+  return readCache<any[]>(`plasom_tickets_cache_${projectId}`, []);
+}
+
+export function readCachedTechnicians(projectId: string): any[] {
+  return readCache<any[]>(`plasom_techs_cache_${projectId}`, []);
+}
+
+export function readCachedThreads(projectId: string): ChatThread[] {
+  return readCache<ChatThread[]>(`plasom_threads_cache_${projectId}`, []);
+}
+
+export function readCachedReviews(projectId: string): SatisfactionItem[] {
+  return readCache<SatisfactionItem[]>(`plasom_reviews_cache_${projectId}`, []);
+}
+
+export function readCachedSummary(projectId: string): any | null {
+  return readCache<any | null>(`plasom_summary_cache_${projectId}`, null);
+}
+
 export function mapApiProjectToItem(raw: ApiProjectRecord): ProjectItem {
   return {
     id: raw.id,
@@ -68,7 +108,6 @@ export function mapApiProjectToItem(raw: ApiProjectRecord): ProjectItem {
   };
 }
 
-// แปลงสถานะใบงานจาก Prisma -> UI
 export function mapBackendStatusToUi(
   status: string,
   hasTech: boolean
@@ -80,7 +119,6 @@ export function mapBackendStatusToUi(
   return 'PENDING';
 }
 
-// แปลงสถานะใบงานจาก UI -> Prisma
 export function mapUiStatusToBackend(
   uiStatus: string
 ): 'SUBMITTED' | 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' {
@@ -105,22 +143,11 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectItem
   return mapApiProjectToItem(res.data.data);
 }
 
-export interface ProjectSummary {
-  tickets: number;
-  threads: number;
-  techs: number;
-  avgCsat?: string;
-}
-
-export async function fetchProjectSummaryApi(projectId: string): Promise<ProjectSummary> {
-  const res = await api.get<{ success: boolean; data: ProjectSummary }>(
-    `/projects/${projectId}/summary`
-  );
-  return res.data.data;
-}
-
-export async function deleteProjectApi(projectId: string): Promise<void> {
-  await api.delete(`/projects/${projectId}`);
+export async function fetchProjectSummaryApi(projectId: string): Promise<any> {
+  const res = await api.get(`/projects/${projectId}/summary`);
+  const data = res.data?.data ?? null;
+  if (data) writeCache(`plasom_summary_cache_${projectId}`, data);
+  return data;
 }
 
 export async function createProjectApi(payload: CreateProjectPayload): Promise<{
@@ -144,6 +171,21 @@ export async function createProjectApi(payload: CreateProjectPayload): Promise<{
   };
 }
 
+export async function updateProjectApi(
+  projectId: string,
+  payload: Partial<CreateProjectPayload>
+): Promise<ProjectItem> {
+  const res = await api.patch<{ success: boolean; data: ApiProjectRecord }>(
+    `/projects/${projectId}`,
+    payload
+  );
+  return mapApiProjectToItem(res.data.data);
+}
+
+export async function deleteProjectApi(projectId: string): Promise<void> {
+  await api.delete(`/projects/${projectId}`);
+}
+
 export async function rotateWebhookSecretApi(projectId: string): Promise<{
   webhookUrl: string;
   webhookSecret: string;
@@ -160,14 +202,18 @@ export async function rotateWebhookSecretApi(projectId: string): Promise<{
 }
 
 // ==========================================
-// 2. Tickets & Messages API
+// 2. Tickets & Messages API (Instant Cache)
 // ==========================================
 export async function fetchProjectTicketsApi(projectId: string): Promise<any[]> {
   const res = await api.get(`/projects/${projectId}/tickets`);
   const payload = res.data?.data;
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.tickets)) return payload.tickets;
-  return [];
+  const list = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.tickets)
+    ? payload.tickets
+    : [];
+  writeCache(`plasom_tickets_cache_${projectId}`, list);
+  return list;
 }
 
 export async function createManualTicketInDb(
@@ -202,17 +248,29 @@ export async function createManualTicketInDb(
       _timeSlot: input.timeSlot || '',
     },
   });
-  return res.data?.data;
+  const created = res.data?.data;
+  if (created) {
+    const prev = readCachedTickets(projectId);
+    writeCache(`plasom_tickets_cache_${projectId}`, [created, ...prev]);
+  }
+  return created;
 }
-
 
 export async function updateProjectTicketApi(
   projectId: string,
   ticketId: string,
-  payload: { status?: string; technicianId?: string | null; note?: string }
+  payload: Record<string, unknown>
 ) {
   const res = await api.patch(`/projects/${projectId}/tickets/${ticketId}`, payload);
-  return res.data?.data;
+  const updated = res.data?.data;
+  if (updated) {
+    const prev = readCachedTickets(projectId);
+    writeCache(
+      `plasom_tickets_cache_${projectId}`,
+      prev.map((t: any) => (t.id === ticketId ? { ...t, ...updated } : t))
+    );
+  }
+  return updated;
 }
 
 export async function fetchTicketMessagesApi(projectId: string, ticketId: string): Promise<any[]> {
@@ -225,13 +283,18 @@ export async function fetchTicketMessagesApi(projectId: string, ticketId: string
 
 export async function fetchProjectThreadsApi(projectId: string): Promise<ChatThread[]> {
   const rawTickets = await fetchProjectTicketsApi(projectId);
-  if (rawTickets.length === 0) return [];
+  if (rawTickets.length === 0) {
+    writeCache(`plasom_threads_cache_${projectId}`, []);
+    return [];
+  }
 
   const threads = await Promise.all(
-    rawTickets.slice(0, 20).map(async (t: any): Promise<ChatThread | null> => {
+    rawTickets.slice(0, 15).map(async (t: any): Promise<ChatThread | null> => {
       try {
         const msgs = await fetchTicketMessagesApi(projectId, t.id);
-        const extra = (t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {}) as Record<string, any>;
+        const extra = (
+          t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {}
+        ) as Record<string, any>;
         const channel = (extra._channel || extra.channel || 'LINE OA') as ChatThread['channel'];
 
         const mappedMessages: ChatThread['messages'] =
@@ -250,22 +313,12 @@ export async function fetchProjectThreadsApi(projectId: string): Promise<ChatThr
                 {
                   sender: 'USER',
                   text: `${t.brand ? `[${t.brand}] ` : ''}${t.symptom}`,
-                  time: t.createdAt
-                    ? new Date(t.createdAt).toLocaleTimeString('th-TH', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '10:00',
+                  time: '10:00',
                 },
                 {
                   sender: 'BOT',
                   text: `บันทึกใบงานเรียบร้อยค่ะ รหัสติดตามของคุณลูกค้าคือ ${t.trackingCode}`,
-                  time: t.createdAt
-                    ? new Date(t.createdAt).toLocaleTimeString('th-TH', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : '10:00',
+                  time: '10:00',
                 },
               ];
 
@@ -286,31 +339,14 @@ export async function fetchProjectThreadsApi(projectId: string): Promise<ChatThr
     })
   );
 
-  return threads.filter((item): item is ChatThread => item !== null);
+  const valid = threads.filter((item): item is ChatThread => item !== null);
+  writeCache(`plasom_threads_cache_${projectId}`, valid);
+  return valid;
 }
 
 // ==========================================
-// 3. Technicians API (พร้อม Instant Cache)
+// 3. Technicians API (Instant Cache)
 // ==========================================
-const TECH_CACHE_PREFIX = 'plasom_techs_cache_';
-
-export function readCachedTechnicians(projectId: string): any[] {
-  try {
-    const raw = localStorage.getItem(`${TECH_CACHE_PREFIX}${projectId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCachedTechnicians(projectId: string, list: any[]) {
-  try {
-    localStorage.setItem(`${TECH_CACHE_PREFIX}${projectId}`, JSON.stringify(list));
-  } catch {
-    // ignore storage quota errors
-  }
-}
-
 export async function fetchProjectTechniciansApi(projectId: string): Promise<any[]> {
   const res = await api.get(`/projects/${projectId}/technicians`);
   const payload = res.data?.data;
@@ -319,7 +355,7 @@ export async function fetchProjectTechniciansApi(projectId: string): Promise<any
     : Array.isArray(payload?.technicians)
     ? payload.technicians
     : [];
-  writeCachedTechnicians(projectId, list);
+  writeCache(`plasom_techs_cache_${projectId}`, list);
   return list;
 }
 
@@ -331,7 +367,7 @@ export async function createProjectTechnicianApi(
   const created = res.data?.data;
   if (created) {
     const prev = readCachedTechnicians(projectId);
-    writeCachedTechnicians(projectId, [...prev, created]);
+    writeCache(`plasom_techs_cache_${projectId}`, [...prev, created]);
   }
   return created;
 }
@@ -351,8 +387,8 @@ export async function updateProjectTechnicianApi(
   const updated = res.data?.data;
   if (updated) {
     const prev = readCachedTechnicians(projectId);
-    writeCachedTechnicians(
-      projectId,
+    writeCache(
+      `plasom_techs_cache_${projectId}`,
       prev.map((t: any) => (t.id === technicianId ? { ...t, ...updated } : t))
     );
   }
@@ -362,16 +398,15 @@ export async function updateProjectTechnicianApi(
 export async function deleteProjectTechnicianApi(projectId: string, technicianId: string) {
   const res = await api.delete(`/projects/${projectId}/technicians/${technicianId}`);
   const prev = readCachedTechnicians(projectId);
-  writeCachedTechnicians(
-    projectId,
+  writeCache(
+    `plasom_techs_cache_${projectId}`,
     prev.filter((t: any) => t.id !== technicianId)
   );
   return res.data;
 }
 
-
 // ==========================================
-// 4. Reviews (CSAT) API
+// 4. Reviews (CSAT) API (Instant Cache)
 // ==========================================
 export async function fetchProjectReviewsApi(projectId: string): Promise<SatisfactionItem[]> {
   const res = await api.get(`/projects/${projectId}/reviews`);
@@ -382,7 +417,7 @@ export async function fetchProjectReviewsApi(projectId: string): Promise<Satisfa
     ? payload.reviews
     : [];
 
-  return rawList.map((rv: any) => ({
+  const mapped = rawList.map((rv: any) => ({
     id: rv.id,
     projectId,
     customerName: rv.customerName || 'ลูกค้า',
@@ -391,4 +426,6 @@ export async function fetchProjectReviewsApi(projectId: string): Promise<Satisfa
     comment: rv.comment || '',
     createdAt: rv.createdAt ? String(rv.createdAt).slice(0, 10) : '',
   }));
+  writeCache(`plasom_reviews_cache_${projectId}`, mapped);
+  return mapped;
 }

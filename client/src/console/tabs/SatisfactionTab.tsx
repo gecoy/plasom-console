@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw, Star } from 'lucide-react';
 import { MOCK_REVIEWS, ProjectItem, SatisfactionItem } from '../mockConsoleData';
-import { fetchProjectReviewsApi } from '../consoleApi';
+import { fetchProjectReviewsApi, readCachedReviews } from '../consoleApi';
 import {
   averageRating,
   belongsToProject,
@@ -32,13 +32,13 @@ export function SatisfactionTab({ project }: Props) {
 
 function SatisfactionTabContent({ project }: Props) {
   const isDemo = isDemoProject(project.id);
-  const demoReviews = isDemo
+  const initialReviews = isDemo
     ? MOCK_REVIEWS.filter((r) => belongsToProject(r.projectId, project.id))
-    : [];
+    : readCachedReviews(project.id);
 
-  // ร้านจริงเริ่มจากค่าว่าง + loading ห้ามเอารีวิวปลอมมาโชว์คั่นเวลา
-  const [reviews, setReviews] = useState<SatisfactionItem[]>(demoReviews);
-  const [loading, setLoading] = useState(!isDemo);
+  const [reviews, setReviews] = useState<SatisfactionItem[]>(initialReviews);
+  const [loading, setLoading] = useState(!isDemo && initialReviews.length === 0);
+
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(() => (isDemo ? new Date() : null));
