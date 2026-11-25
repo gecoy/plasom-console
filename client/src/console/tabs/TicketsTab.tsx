@@ -668,8 +668,9 @@ function CustomDarkSingleDatePicker({
 
 export function TicketsTab({ project }: Props) {
   // Master tickets state
-  const [tickets, setTickets] = useState<ExtendedTicket[]>(() =>
-    MOCK_TICKETS.map((t, idx) => ({
+  const [tickets, setTickets] = useState<ExtendedTicket[]>(() => {
+    if (!project.id.startsWith('proj-')) return [];
+    return MOCK_TICKETS.map((t, idx) => ({
       ...t,
       projectId: project.id,
       priority: (idx === 0 ? 'URGENT' : idx === 1 ? 'NORMAL' : 'LOW') as TicketPriority,
@@ -702,32 +703,45 @@ export function TicketsTab({ project }: Props) {
           time: '24 พ.ย. 10:30',
         },
       ],
-    }))
-  );
+    }));
+  });
 
   const [dbTechs, setDbTechs] = useState<(TechnicianItem & { id: string })[]>([]);
+  const [isLoadingLiveData, setIsLoadingLiveData] = useState(
+    !project.id.startsWith('proj-')
+  );
+  const [liveDataError, setLiveDataError] = useState(false);
+  const [liveDataRetry, setLiveDataRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     async function loadLiveTicketsAndTechs() {
       if (project.id.startsWith('proj-')) return;
-      try {
-        const [rawTickets, rawTechs] = await Promise.all([
-          fetchProjectTicketsApi(project.id),
-          fetchProjectTechniciansApi(project.id),
-        ]);
-        if (cancelled) return;
+      fetchProjectTechniciansApi(project.id)
+        .then((rawTechs) => {
+          if (!cancelled) {
+            setDbTechs(
+              rawTechs.map((tc: any) => ({
+                id: tc.id,
+                projectId: project.id,
+                name: tc.name,
+                specialty: tc.specialty || 'ช่างประจำร้าน',
+                activeJobs: Number(tc.activeJobs ?? tc._count?.tickets ?? 0),
+                status: tc.status === 'BUSY' ? 'BUSY' : 'AVAILABLE',
+              }))
+            );
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            console.error('Failed to load project technicians', error);
+            setDbTechs([]);
+          }
+        });
 
-        setDbTechs(
-          rawTechs.map((tc: any) => ({
-            id: tc.id,
-            projectId: project.id,
-            name: tc.name,
-            specialty: tc.specialty || 'ช่างประจำร้าน',
-            activeJobs: Number(tc.activeJobs ?? tc._count?.tickets ?? 0),
-            status: tc.status === 'BUSY' ? 'BUSY' : 'AVAILABLE',
-          }))
-        );
+      try {
+        const rawTickets = await fetchProjectTicketsApi(project.id);
+        if (cancelled) return;
 
         setTickets(
           rawTickets.map((t: any) => {
@@ -762,15 +776,21 @@ export function TicketsTab({ project }: Props) {
             };
           })
         );
-      } catch {
-        // fallback
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load project tickets', error);
+          setTickets([]);
+          setLiveDataError(true);
+        }
+      } finally {
+        if (!cancelled) setIsLoadingLiveData(false);
       }
     }
     loadLiveTicketsAndTechs();
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, liveDataRetry]);
 
   // View Switcher (ตารางใบงาน, ปฏิทินงาน, แดชบอร์ดสถิติ)
   const [activeView, setActiveView] = useState<'table' | 'calendar' | 'dashboard'>('table');
@@ -880,7 +900,11 @@ export function TicketsTab({ project }: Props) {
   };
 
   const projectTickets = tickets.filter((t) => t.projectId === project.id);
-  const projectTechs = dbTechs.length > 0 ? dbTechs : MOCK_TECHS.map((t) => ({ ...t, projectId: project.id }));
+  const projectTechs = dbTechs.length > 0
+    ? dbTechs
+    : project.id.startsWith('proj-')
+    ? MOCK_TECHS.map((t) => ({ ...t, projectId: project.id }))
+    : [];
 
   // Conflict Detection Helper
   const getTechJobCountOnDate = (techName: string, date: string, excludeTicketId?: string) => {
@@ -1328,6 +1352,58 @@ export function TicketsTab({ project }: Props) {
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
     'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม',
   ];
+
+  if (isLoadingLiveData) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="กำลังโหลดใบงาน">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-800">
+          <div className="space-y-3">
+            <div className="h-7 w-72 rounded skeleton-shimmer" />
+            <div className="h-4 w-96 max-w-full rounded skeleton-shimmer" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-10 w-24 rounded-xl skeleton-shimmer" />
+            <div className="h-10 w-24 rounded-xl skeleton-shimmer" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="h-24 rounded-2xl skeleton-shimmer" />
+          ))}
+        </div>
+        <div className="space-y-4 p-4 rounded-2xl bg-[#111827] border border-slate-800">
+          <div className="h-11 rounded-xl skeleton-shimmer" />
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="h-14 rounded-xl skeleton-shimmer" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (liveDataError) {
+    return (
+      <div
+        role="alert"
+        className="p-8 rounded-2xl bg-[#111827] border border-rose-500/30 text-center space-y-3"
+      >
+        <AlertCircle className="w-8 h-8 mx-auto text-rose-400" />
+        <h2 className="text-base font-bold text-white">โหลดข้อมูลใบงานไม่สำเร็จ</h2>
+        <p className="text-sm text-slate-400">ตรวจสอบการเชื่อมต่อแล้วลองโหลดข้อมูลอีกครั้ง</p>
+        <button
+          type="button"
+          onClick={() => {
+            setIsLoadingLiveData(true);
+            setLiveDataError(false);
+            setLiveDataRetry((retry) => retry + 1);
+          }}
+          className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer"
+        >
+          ลองอีกครั้ง
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

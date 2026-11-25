@@ -4,8 +4,10 @@ import { createHash } from "crypto";
 import {
   createProject,
   createProjectTechnician,
+  deleteProject,
   getProjectTicketMessages,
   getProjectTickets,
+  getProjectSummary,
   rotateProjectWebhookSecret,
   updateProjectTicket,
 } from "../src/controllers/project.controller";
@@ -83,6 +85,61 @@ test("getProjectTickets: ตรวจเจ้าของร้านและ�
     );
     assert.deepEqual(where, { projectId: "p1" });
     assert.equal(res.body.total, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("getProjectSummary: คืนตัวเลขสรุปจากคำขอเดียวและตรวจเจ้าของร้าน", async () => {
+  const restore = stubPrisma({
+    project: {
+      findFirst: async () => ({ _count: { tickets: 12, technicians: 3 } }),
+    },
+    review: { aggregate: async () => ({ _avg: { rating: 4.25 }, _count: { _all: 1 } }) },
+  });
+  try {
+    const res = mockRes();
+    const next = nextSpy();
+    await getProjectSummary(
+      { user: { id: "u1" }, params: { projectId: "p1" } } as any,
+      res,
+      next as any
+    );
+
+    assert.deepEqual(next.calls, []);
+    assert.deepEqual(res.body.data, {
+      tickets: 12,
+      threads: 12,
+      techs: 3,
+      avgCsat: "4.3",
+    });
+  } finally {
+    restore();
+  }
+});
+
+test("deleteProject: ลบได้เฉพาะโปรเจกต์ของเจ้าของที่ล็อกอิน", async () => {
+  let where: any;
+  const restore = stubPrisma({
+    project: {
+      deleteMany: async (args: any) => {
+        where = args.where;
+        return { count: 1 };
+      },
+    },
+  });
+  try {
+    const res = mockRes();
+    const next = nextSpy();
+    await deleteProject(
+      { user: { id: "u1" }, params: { projectId: "p1" } } as any,
+      res,
+      next as any
+    );
+
+    assert.deepEqual(next.calls, []);
+    assert.deepEqual(where, { id: "p1", ownerId: "u1" });
+    assert.equal(res.body.success, true);
   } finally {
     restore();
   }

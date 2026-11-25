@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { ChatThread, MOCK_THREADS, ProjectItem } from '../mockConsoleData';
 import { fetchProjectThreadsApi } from '../consoleApi';
 import { avatarInitial, belongsToProject, filterThreadsByCustomer } from './tabUtils';
@@ -13,31 +13,33 @@ export function ConversationsTab({ project }: Props) {
 }
 
 function ConversationsTabContent({ project }: Props) {
-  const fallbackMocks = MOCK_THREADS.filter((t) => belongsToProject(t.projectId, project.id));
+  const isDemoProject = project.id.startsWith('proj-');
+  const fallbackMocks = isDemoProject
+    ? MOCK_THREADS.filter((t) => belongsToProject(t.projectId, project.id))
+    : [];
   const [threads, setThreads] = useState<ChatThread[]>(fallbackMocks);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isDemoProject);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string>(fallbackMocks[0]?.id || '');
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (project.id.startsWith('proj-')) {
-        setThreads(fallbackMocks);
-        setSelectedId(fallbackMocks[0]?.id || '');
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
+      if (project.id.startsWith('proj-')) return;
       try {
         const dbThreads = await fetchProjectThreadsApi(project.id);
         if (!cancelled) {
-          const finalList = dbThreads.length > 0 ? dbThreads : fallbackMocks;
-          setThreads(finalList);
-          if (finalList[0]) setSelectedId(finalList[0].id);
+          setThreads(dbThreads);
+          setSelectedId(dbThreads[0]?.id || '');
         }
-      } catch {
-        if (!cancelled) setThreads(fallbackMocks);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load project conversations', error);
+          setThreads([]);
+          setLoadError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -46,10 +48,62 @@ function ConversationsTabContent({ project }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, retry]);
 
   const visibleThreads = filterThreadsByCustomer(threads, query);
   const activeThread = visibleThreads.find((t) => t.id === selectedId) || visibleThreads[0];
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="กำลังโหลดบทสนทนา">
+        <div className="space-y-3 pb-4 border-b border-slate-800">
+          <div className="h-7 w-80 max-w-full rounded skeleton-shimmer" />
+          <div className="h-4 w-2/3 rounded skeleton-shimmer" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 min-h-[480px] rounded-2xl bg-[#111827] border border-slate-800 overflow-hidden">
+          <div className="p-4 border-b lg:border-b-0 lg:border-r border-slate-800 space-y-4">
+            <div className="h-10 rounded-lg skeleton-shimmer" />
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="h-16 rounded-xl skeleton-shimmer" />
+            ))}
+          </div>
+          <div className="lg:col-span-2 p-6 space-y-5">
+            <div className="h-12 w-1/2 rounded-xl skeleton-shimmer" />
+            {Array.from({ length: 4 }, (_, index) => (
+              <div
+                key={index}
+                className={`h-16 w-2/3 rounded-2xl skeleton-shimmer ${index % 2 ? 'ml-auto' : ''}`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        role="alert"
+        className="p-8 rounded-2xl bg-[#111827] border border-rose-500/30 text-center space-y-3"
+      >
+        <AlertCircle className="w-8 h-8 mx-auto text-rose-400" />
+        <h2 className="text-base font-bold text-white">โหลดประวัติบทสนทนาไม่สำเร็จ</h2>
+        <p className="text-sm text-slate-400">ตรวจสอบการเชื่อมต่อแล้วลองโหลดข้อมูลอีกครั้ง</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            setLoadError(false);
+            setRetry((current) => current + 1);
+          }}
+          className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer"
+        >
+          ลองอีกครั้ง
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -63,7 +117,6 @@ function ConversationsTabContent({ project }: Props) {
             ตรวจสอบข้อความสนทนาระหว่างลูกค้ากับ AI Chatbot / Voicebot และใบงานที่ถูกเปิดอัตโนมัติ
           </p>
         </div>
-        {loading && <Loader2 className="w-5 h-5 animate-spin text-orange-400" />}
       </div>
 
       {threads.length === 0 ? (

@@ -2,9 +2,11 @@ import { Router } from "express";
 import {
   createProject,
   createProjectTechnician,
+  deleteProject,
   deleteProjectTechnician,
   getProjectById,
   getProjectReviews,
+  getProjectSummary,
   getProjectTicketMessages,
   getProjects,
   getProjectTechnicians,
@@ -22,6 +24,8 @@ router.use(authRequired);
 router.get("/", getProjects);
 router.post("/", createProject);
 router.get("/:projectId", getProjectById);
+router.get("/:projectId/summary", getProjectSummary);
+router.delete("/:projectId", deleteProject);
 router.post("/:projectId/webhook-secret", rotateProjectWebhookSecret);
 router.get("/:projectId/tickets", getProjectTickets);
 router.get("/:projectId/tickets/:ticketId/messages", getProjectTicketMessages);

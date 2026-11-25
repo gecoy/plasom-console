@@ -126,6 +126,69 @@ export async function getProjectById(
   }
 }
 
+export async function deleteProject(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const ownerId = getOwnerId(req, res);
+    if (!ownerId) return;
+
+    const deleted = await prisma.project.deleteMany({
+      where: { id: req.params.projectId, ownerId },
+    });
+    if (!deleted.count) {
+      res.status(404).json({ success: false, error: "ไม่พบร้านค้าในบัญชีนี้" });
+      return;
+    }
+
+    res.json({ success: true, message: "ลบโปรเจกต์ร้านค้าเรียบร้อยแล้ว" });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getProjectSummary(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const ownerId = getOwnerId(req, res);
+    if (!ownerId) return;
+
+    const projectId = req.params.projectId;
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ownerId },
+      select: { _count: { select: { tickets: true, technicians: true } } },
+    });
+    if (!project) {
+      res.status(404).json({ success: false, error: "ไม่พบร้านค้าในบัญชีนี้" });
+      return;
+    }
+
+    const reviews = await prisma.review.aggregate({
+      where: { projectId },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        tickets: project._count.tickets,
+        threads: project._count.tickets,
+        techs: project._count.technicians,
+        avgCsat:
+          reviews._count._all > 0 ? (reviews._avg.rating ?? 0).toFixed(1) : undefined,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function rotateProjectWebhookSecret(
   req: AuthRequest,
   res: Response,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { MOCK_REVIEWS, ProjectItem, SatisfactionItem } from '../mockConsoleData';
 import { fetchProjectReviewsApi } from '../consoleApi';
 import {
@@ -29,27 +29,31 @@ export function SatisfactionTab({ project }: Props) {
 }
 
 function SatisfactionTabContent({ project }: Props) {
-  const fallbackMocks = MOCK_REVIEWS.filter((r) => belongsToProject(r.projectId, project.id));
+  const isDemoProject = project.id.startsWith('proj-');
+  const fallbackMocks = isDemoProject
+    ? MOCK_REVIEWS.filter((r) => belongsToProject(r.projectId, project.id))
+    : [];
   const [reviews, setReviews] = useState<SatisfactionItem[]>(fallbackMocks);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isDemoProject);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [starFilter, setStarFilter] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      if (project.id.startsWith('proj-')) {
-        setReviews(fallbackMocks);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
+      if (project.id.startsWith('proj-')) return;
       try {
         const dbReviews = await fetchProjectReviewsApi(project.id);
         if (!cancelled) {
-          setReviews(dbReviews.length > 0 ? dbReviews : fallbackMocks);
+          setReviews(dbReviews);
         }
-      } catch {
-        if (!cancelled) setReviews(fallbackMocks);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load project reviews', error);
+          setReviews([]);
+          setLoadError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -58,7 +62,7 @@ function SatisfactionTabContent({ project }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [project.id]);
+  }, [project.id, retry]);
 
   const avgScore = averageRating(reviews);
   const distribution = ratingDistribution(reviews);
@@ -66,6 +70,52 @@ function SatisfactionTabContent({ project }: Props) {
   const csatOn = project.features.collectCsat;
 
   const toggleStar = (star: number) => setStarFilter((cur) => (cur === star ? null : star));
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="กำลังโหลดรีวิว">
+        <div className="space-y-3 pb-4 border-b border-slate-800">
+          <div className="h-7 w-80 max-w-full rounded skeleton-shimmer" />
+          <div className="h-4 w-2/3 rounded skeleton-shimmer" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="h-28 rounded-2xl skeleton-shimmer" />
+          ))}
+        </div>
+        <div className="p-6 rounded-2xl bg-[#111827] border border-slate-800 space-y-4">
+          {Array.from({ length: 5 }, (_, index) => (
+            <div key={index} className="h-4 rounded skeleton-shimmer" />
+          ))}
+        </div>
+        <div className="h-56 rounded-2xl skeleton-shimmer" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        role="alert"
+        className="p-8 rounded-2xl bg-[#111827] border border-rose-500/30 text-center space-y-3"
+      >
+        <AlertCircle className="w-8 h-8 mx-auto text-rose-400" />
+        <h2 className="text-base font-bold text-white">โหลดข้อมูลรีวิวไม่สำเร็จ</h2>
+        <p className="text-sm text-slate-400">ตรวจสอบการเชื่อมต่อแล้วลองโหลดข้อมูลอีกครั้ง</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            setLoadError(false);
+            setRetry((current) => current + 1);
+          }}
+          className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer"
+        >
+          ลองอีกครั้ง
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -79,7 +129,6 @@ function SatisfactionTabContent({ project }: Props) {
             สรุปคะแนนรีวิว 1–5 ดาว และข้อเสนอแนะจากลูกค้าหลังปิดใบงานซ่อมสำเร็จ
           </p>
         </div>
-        {loading && <Loader2 className="w-5 h-5 animate-spin text-amber-400" />}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

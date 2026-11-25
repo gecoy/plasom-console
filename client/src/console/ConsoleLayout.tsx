@@ -20,7 +20,6 @@ import {
   FolderKanban,
   ArrowLeft,
   Sparkles,
-  Loader2,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -35,9 +34,7 @@ import {
 } from './mockConsoleData';
 import {
   fetchMyProjects,
-  fetchProjectTicketsApi,
-  fetchProjectTechniciansApi,
-  fetchProjectReviewsApi,
+  fetchProjectSummaryApi,
 } from './consoleApi';
 import { TicketsTab } from './tabs/TicketsTab';
 import { ConversationsTab } from './tabs/ConversationsTab';
@@ -72,11 +69,13 @@ export function ConsoleLayout() {
   );
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [liveCounts, setLiveCounts] = useState<{
+    projectId: string;
     tickets: number;
     threads: number;
     techs: number;
     avgCsat?: string;
   } | null>(null);
+  const [badgeErrorProjectId, setBadgeErrorProjectId] = useState<string | null>(null);
 
   const switcherRef = useRef<HTMLDivElement>(null);
 
@@ -130,24 +129,21 @@ export function ConsoleLayout() {
     async function loadBadges() {
       if (!currentProject?.id || currentProject.id.startsWith('proj-')) {
         setLiveCounts(null);
+        setBadgeErrorProjectId(null);
         return;
       }
+      setLiveCounts(null);
+      setBadgeErrorProjectId(null);
       try {
-        const [tks, tchs, rvs] = await Promise.all([
-          fetchProjectTicketsApi(currentProject.id),
-          fetchProjectTechniciansApi(currentProject.id),
-          fetchProjectReviewsApi(currentProject.id),
-        ]);
+        const summary = await fetchProjectSummaryApi(currentProject.id);
         if (!cancelled) {
-          setLiveCounts({
-            tickets: tks.length,
-            threads: tks.length,
-            techs: tchs.length,
-            avgCsat: rvs.length > 0 ? averageRating(rvs) : undefined,
-          });
+          setLiveCounts({ ...summary, projectId: currentProject.id });
         }
-      } catch {
-        if (!cancelled) setLiveCounts(null);
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load project summary badges', error);
+          setBadgeErrorProjectId(currentProject.id);
+        }
       }
     }
     loadBadges();
@@ -161,11 +157,29 @@ export function ConsoleLayout() {
     return (
       <AuroraBackground
         intensity="medium"
-        className="min-h-screen flex items-center justify-center p-6 text-slate-100 font-sans"
+        className="min-h-screen p-4 sm:p-6 text-slate-100 font-sans"
       >
-        <div className="flex flex-col items-center gap-3 text-slate-300">
-          <Loader2 className="w-8 h-8 animate-spin text-orange-400" />
-          <span className="text-sm">กำลังโหลดข้อมูลร้านค้า...</span>
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-[18rem_1fr] gap-5" aria-busy="true" aria-label="กำลังโหลดข้อมูลร้านค้า">
+          <div className="hidden lg:block h-[calc(100vh-3rem)] rounded-2xl bg-slate-950/70 border border-slate-800/80 p-5 space-y-5 shadow-2xl shadow-black/20">
+            <div className="h-10 w-3/4 rounded-xl skeleton-shimmer" />
+            <div className="h-16 rounded-xl skeleton-shimmer" />
+            {Array.from({ length: 5 }, (_, index) => (
+              <div key={index} className="h-10 rounded-xl skeleton-shimmer" />
+            ))}
+          </div>
+          <div className="space-y-5">
+            <div className="h-16 rounded-2xl skeleton-shimmer" />
+            <div className="h-[68vh] rounded-2xl bg-slate-950/70 border border-slate-800/80 p-6 shadow-2xl shadow-black/20">
+              <div className="h-8 w-1/3 rounded skeleton-shimmer" />
+              <div className="h-4 w-2/3 rounded skeleton-shimmer mt-4" />
+              <div className="grid grid-cols-2 gap-4 mt-8">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div key={index} className="h-24 rounded-xl skeleton-shimmer" />
+                ))}
+              </div>
+              <div className="h-40 rounded-xl skeleton-shimmer mt-6" />
+            </div>
+          </div>
         </div>
       </AuroraBackground>
     );
@@ -210,10 +224,31 @@ export function ConsoleLayout() {
     belongsToProject(t.projectId, currentProject.id)
   ).length;
 
-  const ticketsCount = liveCounts ? liveCounts.tickets : mockTicketsCount;
-  const threadsCount = liveCounts ? liveCounts.threads : mockThreadsCount;
-  const avgCsat = liveCounts ? liveCounts.avgCsat : mockAvgCsat;
-  const techsCount = liveCounts ? liveCounts.techs : mockTechsCount;
+  const isLiveProject = !currentProject.id.startsWith('proj-');
+  const hasCurrentProjectCounts = liveCounts?.projectId === currentProject.id;
+  const isBadgeLoading =
+    isLiveProject && !hasCurrentProjectCounts && badgeErrorProjectId !== currentProject.id;
+  const badgeFailure = isLiveProject && badgeErrorProjectId === currentProject.id;
+  const ticketsCount = hasCurrentProjectCounts
+    ? liveCounts.tickets
+    : isLiveProject
+    ? '—'
+    : mockTicketsCount;
+  const threadsCount = hasCurrentProjectCounts
+    ? liveCounts.threads
+    : isLiveProject
+    ? '—'
+    : mockThreadsCount;
+  const avgCsat = hasCurrentProjectCounts
+    ? liveCounts.avgCsat
+    : isLiveProject
+    ? undefined
+    : mockAvgCsat;
+  const techsCount = hasCurrentProjectCounts
+    ? liveCounts.techs
+    : isLiveProject
+    ? '—'
+    : mockTechsCount;
 
   const menuItems: NavMenuItem[] = [
     {
@@ -235,7 +270,11 @@ export function ConsoleLayout() {
       label: 'ความพึงพอใจลูกค้า (CSAT)',
       shortLabel: 'รีวิว CSAT',
       icon: Star,
-      badge: avgCsat ? `★${avgCsat}` : 0,
+      badge: isLiveProject && !hasCurrentProjectCounts
+        ? '—'
+        : avgCsat
+        ? `★${avgCsat}`
+        : 0,
     },
     {
       key: 'technicians',
@@ -443,15 +482,23 @@ export function ConsoleLayout() {
                 </span>
 
                 {!sidebarCollapsed && item.badge !== undefined && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-mono shrink-0 ${
-                      active
-                        ? 'bg-orange-500 text-white font-semibold'
-                        : 'bg-slate-800/90 text-slate-400'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
+                  isBadgeLoading ? (
+                    <span
+                      aria-label="กำลังโหลดตัวเลขสรุป"
+                      className="h-5 w-8 rounded-full skeleton-shimmer shrink-0"
+                    />
+                  ) : (
+                    <span
+                      title={badgeFailure ? 'โหลดตัวเลขสรุปไม่สำเร็จ' : undefined}
+                      className={`px-2 py-0.5 rounded-full text-[11px] font-mono shrink-0 ${
+                        active
+                          ? 'bg-orange-500 text-white font-semibold'
+                          : 'bg-slate-800/90 text-slate-400'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )
                 )}
               </button>
             );
@@ -618,13 +665,21 @@ export function ConsoleLayout() {
                         <span>{item.label}</span>
                       </span>
                       {item.badge !== undefined && (
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-mono ${
-                            active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                          }`}
-                        >
-                          {item.badge}
-                        </span>
+                        isBadgeLoading ? (
+                          <span
+                            aria-label="กำลังโหลดตัวเลขสรุป"
+                            className="h-5 w-8 rounded-full skeleton-shimmer"
+                          />
+                        ) : (
+                          <span
+                            title={badgeFailure ? 'โหลดตัวเลขสรุปไม่สำเร็จ' : undefined}
+                            className={`px-2 py-0.5 rounded-full text-xs font-mono ${
+                              active ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )
                       )}
                     </button>
                   );

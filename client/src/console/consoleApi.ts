@@ -105,6 +105,24 @@ export async function fetchProjectDetail(projectId: string): Promise<ProjectItem
   return mapApiProjectToItem(res.data.data);
 }
 
+export interface ProjectSummary {
+  tickets: number;
+  threads: number;
+  techs: number;
+  avgCsat?: string;
+}
+
+export async function fetchProjectSummaryApi(projectId: string): Promise<ProjectSummary> {
+  const res = await api.get<{ success: boolean; data: ProjectSummary }>(
+    `/projects/${projectId}/summary`
+  );
+  return res.data.data;
+}
+
+export async function deleteProjectApi(projectId: string): Promise<void> {
+  await api.delete(`/projects/${projectId}`);
+}
+
 export async function createProjectApi(payload: CreateProjectPayload): Promise<{
   project: ProjectItem;
   webhookUrl: string;

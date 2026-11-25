@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Plus,
   Pencil,
@@ -27,7 +27,6 @@ import {
 } from 'lucide-react';
 import { MOCK_TECHS, ProjectItem, TechnicianItem } from '../mockConsoleData';
 import {
-  readCachedTechnicians,
   fetchProjectTechniciansApi,
   createProjectTechnicianApi,
   updateProjectTechnicianApi,
@@ -96,36 +95,67 @@ const TECH_STATUS_CONFIG: Record<
 };
 
 export function TechniciansTab({ project }: Props) {
-  const [techs, setTechs] = useState<ExtendedTechnician[]>(() => {
-    if (!project.id.startsWith('proj-')) {
-      return readCachedTechnicians(project.id).map((t: any, idx: number) => ({
-        id: t.id,
+  const isDemoProject = project.id.startsWith('proj-');
+  const demoTechs = isDemoProject
+    ? MOCK_TECHS.map((t, idx) => ({
+        ...t,
         projectId: project.id,
-        name: t.name,
-        specialty: t.specialty || 'ช่างประจำร้าน',
-        phone: t.phone || '-',
-        lineId: t.area || `@tech_${idx + 1}`,
-        activeJobs: Number(t.activeJobs ?? t._count?.tickets ?? 0),
-        status: (t.status as TechStatus) || 'AVAILABLE',
-        rating: 4.9,
-        reviewCount: 15,
-        completedJobs: Number(t.completedJobs ?? 12),
+        status: t.status as TechStatus,
+        phone: `08${idx + 1}-555-${1000 + idx * 123}`,
+        lineId: `@tech_${t.name.split(' ')[0]}`,
+        rating: Number((4.7 + (idx % 3) * 0.1).toFixed(1)),
+        reviewCount: 24 + idx * 11,
+        completedJobs: 38 + idx * 17,
         maxDailyJobs: 4,
-      }));
-    }
-    // คงโค้ด Mock เดิมไว้เฉพาะตอนเปิดโปรเจกต์ตัวอย่าง (proj-...)
-    return MOCK_TECHS.map((t, idx) => ({
-      ...t,
-      projectId: project.id,
-      status: t.status as TechStatus,
-      phone: `08${idx + 1}-555-${1000 + idx * 123}`,
-      lineId: `@tech_${t.name.split(' ')[0]}`,
-      rating: Number((4.7 + (idx % 3) * 0.1).toFixed(1)),
-      reviewCount: 24 + idx * 11,
-      completedJobs: 38 + idx * 17,
-      maxDailyJobs: 4,
-    }));
-  });
+      }))
+    : [];
+  const [techs, setTechs] = useState<ExtendedTechnician[]>(demoTechs);
+  const [loading, setLoading] = useState(!isDemoProject);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    if (project.id.startsWith('proj-')) return;
+    let cancelled = false;
+    fetchProjectTechniciansApi(project.id)
+      .then((rawTechs) => {
+        if (!cancelled) {
+          setTechs(
+            rawTechs.map((t: any, idx: number) => ({
+              id: t.id,
+              projectId: project.id,
+              name: t.name,
+              specialty: t.specialty || 'ช่างประจำร้าน',
+              phone: t.phone || '-',
+              lineId: t.area || `@tech_${idx + 1}`,
+              activeJobs: Number(t.activeJobs ?? t._count?.tickets ?? 0),
+              status:
+                t.status === 'BUSY' || t.status === 'INACTIVE'
+                  ? t.status
+                  : 'AVAILABLE',
+              rating: 4.9,
+              reviewCount: 15,
+              completedJobs: Number(t.completedJobs ?? 12),
+              maxDailyJobs: 4,
+            }))
+          );
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to load project technicians', error);
+          setTechs([]);
+          setLoadError(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, retry]);
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -297,6 +327,55 @@ export function TechniciansTab({ project }: Props) {
     const clean = name.replace(/ช่าง/g, '').trim();
     return clean ? clean.slice(0, 2) : name.slice(0, 2);
   };
+
+  if (loading) {
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="กำลังโหลดทีมช่าง">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div className="space-y-3">
+            <div className="h-7 w-72 rounded skeleton-shimmer" />
+            <div className="h-4 w-96 max-w-full rounded skeleton-shimmer" />
+          </div>
+          <div className="h-10 w-40 rounded-xl skeleton-shimmer" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-24 rounded-2xl skeleton-shimmer" />
+          ))}
+        </div>
+        <div className="h-14 rounded-2xl skeleton-shimmer" />
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }, (_, index) => (
+            <div key={index} className="h-64 rounded-2xl skeleton-shimmer" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        role="alert"
+        className="p-8 rounded-2xl bg-[#111827] border border-rose-500/30 text-center space-y-3"
+      >
+        <AlertCircle className="w-8 h-8 mx-auto text-rose-400" />
+        <h2 className="text-base font-bold text-white">โหลดข้อมูลทีมช่างไม่สำเร็จ</h2>
+        <p className="text-sm text-slate-400">ตรวจสอบการเชื่อมต่อแล้วลองโหลดข้อมูลอีกครั้ง</p>
+        <button
+          type="button"
+          onClick={() => {
+            setLoading(true);
+            setLoadError(false);
+            setRetry((current) => current + 1);
+          }}
+          className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold cursor-pointer"
+        >
+          ลองอีกครั้ง
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
