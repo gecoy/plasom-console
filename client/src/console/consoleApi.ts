@@ -281,67 +281,79 @@ export async function fetchTicketMessagesApi(projectId: string, ticketId: string
   return [];
 }
 
+function mapTicketToThread(projectId: string, t: any, msgs: any[]): ChatThread {
+  const extra = (
+    t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {}
+  ) as Record<string, any>;
+  const channel = (extra._channel || extra.channel || 'LINE OA') as ChatThread['channel'];
+
+  const mappedMessages: ChatThread['messages'] =
+    msgs.length > 0
+      ? msgs.map((m: any) => ({
+          sender: m.sender === 'BOT' || m.sender === 'STAFF' || m.fromStaff ? 'BOT' : 'USER',
+          text: m.text,
+          time: m.createdAt
+            ? new Date(m.createdAt).toLocaleTimeString('th-TH', {
+                hour: '2-digit',
+                minute: '2-digit',
+              })
+            : '',
+        }))
+      : [
+          {
+            sender: 'USER',
+            text: `${t.brand ? `[${t.brand}] ` : ''}${t.symptom}`,
+            time: '10:00',
+          },
+          {
+            sender: 'BOT',
+            text: `บันทึกใบงานเรียบร้อยค่ะ รหัสติดตามของคุณลูกค้าคือ ${t.trackingCode}`,
+            time: '10:00',
+          },
+        ];
+
+  const lastMsg = mappedMessages[mappedMessages.length - 1];
+  const lastActivity = t.lastActivityAt || t.updatedAt;
+  return {
+    id: `th-${t.id}`,
+    projectId,
+    customerName: t.customerName || 'ลูกค้า',
+    channel,
+    lastMessage: lastMsg?.text || t.symptom || '',
+    updatedAt: lastActivity ? new Date(lastActivity).toLocaleDateString('th-TH') : 'วันนี้',
+    openedTicketCode: t.trackingCode,
+    messages: mappedMessages,
+  };
+}
+
+export type ConversationsResult =
+  | { changed: false; version: string }
+  | { changed: true; version: string; threads: ChatThread[] };
+
+/**
+ * โหลดห้องแชททั้งหมดในคำขอเดียว ส่ง version เดิมไปด้วยเพื่อให้ server ตอบสั้นๆ เมื่อไม่มีอะไรเปลี่ยน
+ * (หน้าแชทเรียกซ้ำทุกไม่กี่วินาทีเพื่อแสดงข้อความใหม่แบบเกือบเรียลไทม์)
+ */
+export async function fetchProjectConversationsApi(
+  projectId: string,
+  version?: string
+): Promise<ConversationsResult> {
+  const res = await api.get(`/projects/${projectId}/conversations`, {
+    params: version ? { version } : undefined,
+  });
+  const payload = res.data as any;
+  const nextVersion = String(payload?.version ?? '');
+  if (payload?.changed === false) return { changed: false, version: nextVersion };
+
+  const rows: any[] = Array.isArray(payload?.data) ? payload.data : [];
+  const threads = rows.map((t) => mapTicketToThread(projectId, t, Array.isArray(t.messages) ? t.messages : []));
+  writeCache(`plasom_threads_cache_${projectId}`, threads);
+  return { changed: true, version: nextVersion, threads };
+}
+
 export async function fetchProjectThreadsApi(projectId: string): Promise<ChatThread[]> {
-  const rawTickets = await fetchProjectTicketsApi(projectId);
-  if (rawTickets.length === 0) {
-    writeCache(`plasom_threads_cache_${projectId}`, []);
-    return [];
-  }
-
-  const threads = await Promise.all(
-    rawTickets.slice(0, 15).map(async (t: any): Promise<ChatThread | null> => {
-      try {
-        const msgs = await fetchTicketMessagesApi(projectId, t.id);
-        const extra = (
-          t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {}
-        ) as Record<string, any>;
-        const channel = (extra._channel || extra.channel || 'LINE OA') as ChatThread['channel'];
-
-        const mappedMessages: ChatThread['messages'] =
-          msgs.length > 0
-            ? msgs.map((m: any) => ({
-                sender: m.sender === 'BOT' || m.sender === 'STAFF' || m.fromStaff ? 'BOT' : 'USER',
-                text: m.text,
-                time: m.createdAt
-                  ? new Date(m.createdAt).toLocaleTimeString('th-TH', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : '',
-              }))
-            : [
-                {
-                  sender: 'USER',
-                  text: `${t.brand ? `[${t.brand}] ` : ''}${t.symptom}`,
-                  time: '10:00',
-                },
-                {
-                  sender: 'BOT',
-                  text: `บันทึกใบงานเรียบร้อยค่ะ รหัสติดตามของคุณลูกค้าคือ ${t.trackingCode}`,
-                  time: '10:00',
-                },
-              ];
-
-        const lastMsg = mappedMessages[mappedMessages.length - 1];
-        return {
-          id: `th-${t.id}`,
-          projectId,
-          customerName: t.customerName || 'ลูกค้า',
-          channel,
-          lastMessage: lastMsg?.text || t.symptom || '',
-          updatedAt: t.updatedAt ? new Date(t.updatedAt).toLocaleDateString('th-TH') : 'วันนี้',
-          openedTicketCode: t.trackingCode,
-          messages: mappedMessages,
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  const valid = threads.filter((item): item is ChatThread => item !== null);
-  writeCache(`plasom_threads_cache_${projectId}`, valid);
-  return valid;
+  const result = await fetchProjectConversationsApi(projectId);
+  return result.changed ? result.threads : readCachedThreads(projectId);
 }
 
 // ==========================================

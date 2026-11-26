@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
 import { ChatThread, MOCK_THREADS, ProjectItem } from '../mockConsoleData';
-import { fetchProjectThreadsApi, readCachedThreads } from '../consoleApi';
+import { fetchProjectConversationsApi, readCachedThreads } from '../consoleApi';
 import {
   avatarInitial,
   belongsToProject,
@@ -24,6 +24,9 @@ export function ConversationsTab({ project }: Props) {
   // key = project.id → สลับร้านแล้วคำค้นหา/ห้องที่เลือก/ข้อความจำลองเริ่มใหม่
   return <ConversationsTabContent key={project.id} project={project} />;
 }
+
+/** ความถี่เช็กข้อความใหม่ (5 วิ ≈ 180 คำขอ/15 นาที ต่ำกว่า rate limit 300) */
+const LIVE_POLL_MS = 5000;
 
 function ConversationsTabContent({ project }: Props) {
   const isDemo = isDemoProject(project.id);
@@ -48,28 +51,44 @@ function ConversationsTabContent({ project }: Props) {
   const messagesBoxRef = useRef<HTMLDivElement>(null);
   const copyTimer = useRef<number | undefined>(undefined);
 
+  const versionRef = useRef<string | undefined>(undefined);
+  const pollInFlight = useRef(false);
+
   const loadThreads = useCallback(
-    async (mode: 'initial' | 'refresh') => {
+    async (mode: 'initial' | 'refresh' | 'poll') => {
       // ครั้งแรก state เริ่มต้นถูกตั้งไว้แล้ว (loading=true, error='') จึงไม่ต้อง setState ทันที
       if (isDemo) {
         if (mode === 'refresh') setLastUpdated(new Date());
         return;
       }
+      if (mode === 'poll' && pollInFlight.current) return; // คำขอก่อนหน้ายังไม่กลับ ไม่ยิงซ้อน
       const myRequest = ++requestId.current;
       if (mode === 'refresh') {
         setRefreshing(true);
         setError('');
       }
+      pollInFlight.current = true;
       try {
-        const list = await fetchProjectThreadsApi(project.id);
+        // กดรีเฟรชเอง = โหลดใหม่ทั้งหมด / อัปเดตอัตโนมัติ = ส่ง version เดิมไปเช็กว่ามีอะไรเปลี่ยนไหม
+        const result = await fetchProjectConversationsApi(
+          project.id,
+          mode === 'poll' ? versionRef.current : undefined,
+        );
         if (myRequest !== requestId.current) return; // มีคำขอใหม่กว่าแล้ว ทิ้งผลเก่า
-        setThreads(list);
-        setSelectedId((cur) => (list.some((t) => t.id === cur) ? cur : list[0]?.id || ''));
+        versionRef.current = result.version;
+        if (result.changed) {
+          const list = result.threads;
+          setThreads(list);
+          setSelectedId((cur) => (list.some((t) => t.id === cur) ? cur : list[0]?.id || ''));
+        }
         setLastUpdated(new Date());
+        if (mode === 'poll') setError('');
       } catch {
         if (myRequest !== requestId.current) return;
-        setError('โหลดประวัติแชทไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+        // อัปเดตอัตโนมัติพลาดครั้งเดียวไม่ต้องเตือน (เน็ตสะดุด) รอบถัดไปจะลองใหม่เอง
+        if (mode !== 'poll') setError('โหลดประวัติแชทไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
       } finally {
+        pollInFlight.current = false;
         if (myRequest === requestId.current) {
           setLoading(false);
           setRefreshing(false);
@@ -87,6 +106,23 @@ function ConversationsTabContent({ project }: Props) {
     };
   }, [loadThreads]);
 
+  // อัปเดตอัตโนมัติทุก 5 วินาที เฉพาะตอนที่เปิดแท็บเบราว์เซอร์นี้อยู่ (ซ่อนแท็บ = หยุด ไม่เปลือง rate limit)
+  useEffect(() => {
+    if (isDemo) return;
+    const tick = () => {
+      if (document.visibilityState === 'visible') loadThreads('poll');
+    };
+    const timer = window.setInterval(tick, LIVE_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') loadThreads('poll');
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isDemo, loadThreads]);
+
   const visibleThreads = filterThreadsByCustomer(threads, query);
   const activeThread = visibleThreads.find((t) => t.id === selectedId) || visibleThreads[0];
   const activeDrafts = activeThread ? staffDrafts[activeThread.id] || [] : [];
@@ -96,6 +132,18 @@ function ConversationsTabContent({ project }: Props) {
     const box = messagesBoxRef.current;
     if (box) box.scrollTop = box.scrollHeight;
   }, [activeThread?.id, activeDrafts.length]);
+
+  // มีข้อความใหม่เข้ามาเอง: เลื่อนตามเฉพาะตอนที่ผู้ใช้อยู่ล่างสุดอยู่แล้ว (ไม่ดึงจอหนีตอนกำลังอ่านข้อความเก่า)
+  const activeMessageCount = activeThread?.messages.length ?? 0;
+  const lastMessageCount = useRef({ id: '', count: 0 });
+  useEffect(() => {
+    const box = messagesBoxRef.current;
+    const prev = lastMessageCount.current;
+    lastMessageCount.current = { id: activeThread?.id ?? '', count: activeMessageCount };
+    if (!box || prev.id !== activeThread?.id || activeMessageCount <= prev.count) return;
+    const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+    if (nearBottom) box.scrollTop = box.scrollHeight;
+  }, [activeThread?.id, activeMessageCount]);
 
   const sendReply = () => {
     const text = replyText.trim();
@@ -161,7 +209,15 @@ function ConversationsTabContent({ project }: Props) {
             {refreshing ? 'กำลังโหลด...' : 'รีเฟรชข้อมูลล่าสุด'}
           </button>
           {lastUpdated && (
-            <span className="text-[11px] text-slate-500">อัปเดตล่าสุด {formatClock(lastUpdated)}</span>
+            <span className="text-[11px] text-slate-500 inline-flex items-center gap-1.5">
+              {!isDemo && (
+                <span className="inline-flex items-center gap-1 text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  อัปเดตอัตโนมัติ
+                </span>
+              )}
+              อัปเดตล่าสุด {formatClock(lastUpdated)}
+            </span>
           )}
         </div>
       </div>
@@ -206,7 +262,7 @@ function ConversationsTabContent({ project }: Props) {
             </div>
             <div className="mt-4 font-bold text-white">ยังไม่มีประวัติแชท</div>
             <p className="mt-1 text-sm text-slate-400">
-              เมื่อลูกค้าทักบอทหรือแจ้งซ่อมเข้ามา บทสนทนาจะแสดงที่นี่ กด “รีเฟรชข้อมูลล่าสุด” เพื่อเช็กข้อความใหม่
+              เมื่อลูกค้าทักบอทหรือแจ้งซ่อมเข้ามา บทสนทนาจะแสดงที่นี่โดยอัตโนมัติ
             </p>
           </div>
         )

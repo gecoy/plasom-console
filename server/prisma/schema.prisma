@@ -186,6 +186,8 @@ model Message {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 model Review {

@@ -382,6 +382,88 @@ export async function getProjectTickets(
   }
 }
 
+// ===========================
+// GET /api/projects/:projectId/conversations?version=
+// โหลดห้องแชททั้งหมดของร้านในคำขอเดียว (หน้าแชทเรียกซ้ำทุกไม่กี่วินาที)
+// ถ้า version ตรงกับข้อมูลล่าสุด ตอบ changed:false โดยไม่ส่งข้อความซ้ำ
+// ===========================
+const CONVERSATION_TICKET_LIMIT = 30;
+const CONVERSATION_MESSAGE_LIMIT = 200;
+
+export async function getProjectConversations(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const ownerId = getOwnerId(req, res);
+    if (!ownerId) return;
+
+    const { projectId } = req.params;
+    if (!(await findOwnedProject(projectId, ownerId))) {
+      res.status(404).json({ success: false, error: "ไม่พบร้านค้าในบัญชีนี้" });
+      return;
+    }
+
+    const [messageAgg, ticketAgg] = await Promise.all([
+      prisma.message.aggregate({
+        where: { ticket: { projectId } },
+        _max: { createdAt: true },
+        _count: { _all: true },
+      }),
+      prisma.ticket.aggregate({
+        where: { projectId },
+        _max: { updatedAt: true },
+        _count: { _all: true },
+      }),
+    ]);
+    const version = [
+      messageAgg._max.createdAt?.getTime() ?? 0,
+      messageAgg._count._all,
+      ticketAgg._max.updatedAt?.getTime() ?? 0,
+      ticketAgg._count._all,
+    ].join("-");
+
+    if (typeof req.query.version === "string" && req.query.version === version) {
+      res.json({ success: true, changed: false, version });
+      return;
+    }
+
+    const tickets = await prisma.ticket.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      take: CONVERSATION_TICKET_LIMIT,
+      select: {
+        id: true,
+        trackingCode: true,
+        customerName: true,
+        brand: true,
+        symptom: true,
+        extraFields: true,
+        createdAt: true,
+        updatedAt: true,
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: CONVERSATION_MESSAGE_LIMIT,
+          select: { id: true, text: true, sender: true, fromStaff: true, createdAt: true },
+        },
+      },
+    });
+
+    const data = tickets
+      .map((t) => {
+        const messages = [...t.messages].reverse();
+        const lastActivityAt = messages[messages.length - 1]?.createdAt ?? t.createdAt;
+        return { ...t, messages, lastActivityAt };
+      })
+      .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+
+    res.json({ success: true, changed: true, version, data });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getProjectTicketMessages(
   req: AuthRequest,
   res: Response,

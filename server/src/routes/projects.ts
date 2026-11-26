@@ -9,6 +9,7 @@ import {
   createProjectReview,
   getProjectSummary,
   getProjectTicketMessages,
+  getProjectConversations,
   getProjects,
   getProjectTechnicians,
   getProjectTickets,
@@ -33,6 +34,7 @@ router.get("/:projectId/summary", getProjectSummary);
 router.post("/:projectId/webhook-secret", rotateProjectWebhookSecret);
 router.get("/:projectId/tickets", getProjectTickets);
 router.post("/:projectId/tickets", createProjectTicket);
+router.get("/:projectId/conversations", getProjectConversations);
 router.get("/:projectId/tickets/:ticketId/messages", getProjectTicketMessages);
 router.patch("/:projectId/tickets/:ticketId", updateProjectTicket);
 router.get("/:projectId/technicians", getProjectTechnicians);
