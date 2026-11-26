@@ -41,33 +41,87 @@ export async function findSourceForTicket(
   }
 
   // 2. ลูกค้าพิมพ์เบอร์เดียวกับในใบงานไว้ในแชท
+  //    ดูทั้งแชทที่พักไว้ และแชทที่ถูกบันทึกเข้าใบงานเก่าของลูกค้าคนเดิม (ลูกค้าที่มีใบงานเปิดอยู่แล้วแจ้งซ่อมเพิ่ม)
   if (hasRealPhone) {
-    const recent = await prisma.botnoiChatEvent.findMany({
+    const since = new Date(now.getTime() - PHONE_LOOKBACK_MS);
+    const [buffered, attached] = await Promise.all([
+      prisma.botnoiChatEvent.findMany({
+        where: { projectId, sender: MessageSender.CUSTOMER, sentAt: { gte: since } },
+        select: { sourceId: true, channel: true, text: true, sentAt: true },
+        orderBy: { sentAt: "desc" },
+        take: 300,
+      }),
+      prisma.message.findMany({
+        where: {
+          sender: MessageSender.CUSTOMER,
+          createdAt: { gte: since },
+          ticket: { projectId, botnoiSourceId: { not: null }, id: { not: ticket.id } },
+        },
+        select: {
+          text: true,
+          createdAt: true,
+          ticket: { select: { botnoiSourceId: true, botnoiChannel: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+      }),
+    ]);
+    const candidates = [
+      ...buffered.map((e) => ({ sourceId: e.sourceId, channel: e.channel, text: e.text, at: e.sentAt })),
+      ...attached.map((m) => ({
+        sourceId: m.ticket.botnoiSourceId as string,
+        channel: m.ticket.botnoiChannel ?? "line",
+        text: m.text,
+        at: m.createdAt,
+      })),
+    ].sort((a, b) => b.at.getTime() - a.at.getTime());
+    const hit = candidates.find((c) => c.text.replace(/\D/g, "").includes(ticket.customerPhone));
+    if (hit) return { sourceId: hit.sourceId, channel: hit.channel };
+
+    // 2b. ลูกค้าเบอร์เดียวกันเคยแจ้งซ่อมผ่านบอทมาก่อน -> ห้องแชทเดิม
+    const previous = await prisma.ticket.findFirst({
       where: {
         projectId,
-        sender: MessageSender.CUSTOMER,
-        sentAt: { gte: new Date(now.getTime() - PHONE_LOOKBACK_MS) },
+        customerPhone: ticket.customerPhone,
+        botnoiSourceId: { not: null },
+        id: { not: ticket.id },
       },
-      select: { sourceId: true, channel: true, text: true },
-      orderBy: { sentAt: "desc" },
-      take: 300,
+      select: { botnoiSourceId: true, botnoiChannel: true },
+      orderBy: { createdAt: "desc" },
     });
-    const hit = recent.find((e) => e.text.replace(/\D/g, "").includes(ticket.customerPhone));
-    if (hit) return { sourceId: hit.sourceId, channel: hit.channel };
+    if (previous?.botnoiSourceId) {
+      return { sourceId: previous.botnoiSourceId, channel: previous.botnoiChannel ?? "line" };
+    }
   }
 
   // 3. มีลูกค้าคุยกับบอทอยู่ห้องเดียวในช่วงนี้ (ถ้ามีหลายห้องจะไม่เดา กันผูกผิดคน)
-  const active = await prisma.botnoiChatEvent.findMany({
-    where: {
-      projectId,
-      sender: MessageSender.CUSTOMER,
-      sentAt: { gte: new Date(now.getTime() - ACTIVE_FALLBACK_MS) },
-    },
-    select: { sourceId: true, channel: true },
-    distinct: ["sourceId"],
-    take: 2,
-  });
-  if (active.length === 1) return active[0];
+  const activeSince = new Date(now.getTime() - ACTIVE_FALLBACK_MS);
+  const [activeBuffered, activeAttached] = await Promise.all([
+    prisma.botnoiChatEvent.findMany({
+      where: { projectId, sender: MessageSender.CUSTOMER, sentAt: { gte: activeSince } },
+      select: { sourceId: true, channel: true },
+      distinct: ["sourceId"],
+      take: 2,
+    }),
+    prisma.message.findMany({
+      where: {
+        sender: MessageSender.CUSTOMER,
+        createdAt: { gte: activeSince },
+        ticket: { projectId, botnoiSourceId: { not: null }, id: { not: ticket.id } },
+      },
+      select: { ticket: { select: { botnoiSourceId: true, botnoiChannel: true } } },
+      take: 50,
+    }),
+  ]);
+  const activeSources = new Map<string, string>();
+  for (const e of activeBuffered) activeSources.set(e.sourceId, e.channel);
+  for (const m of activeAttached) {
+    if (m.ticket.botnoiSourceId) activeSources.set(m.ticket.botnoiSourceId, m.ticket.botnoiChannel ?? "line");
+  }
+  if (activeSources.size === 1) {
+    const [[sourceId, channel]] = [...activeSources.entries()];
+    return { sourceId, channel };
+  }
 
   return null;
 }

@@ -245,10 +245,11 @@ test("linkBotnoiChatToTicket: จับห้องแชทจากเบอ�
   const restore = stubPrisma({
     botnoiChatEvent: {
       findMany: async () => [
-        { sourceId: "U-other", channel: "line", text: "สวัสดี" },
-        { sourceId: "U-cust", channel: "line", text: "เบอร์ 081-234-5678 ครับ" },
+        { sourceId: "U-other", channel: "line", text: "สวัสดี", sentAt: new Date(2) },
+        { sourceId: "U-cust", channel: "line", text: "เบอร์ 081-234-5678 ครับ", sentAt: new Date(1) },
       ],
     },
+    message: { findMany: async () => [] },
     $transaction: async (fn: any) => fn(tx),
   });
   try {
@@ -275,6 +276,7 @@ test("linkBotnoiChatToTicket: ไม่มีเบอร์และมีห�
         { sourceId: "U-b", channel: "line" },
       ],
     },
+    message: { findMany: async () => [] },
   });
   try {
     const result = await linkBotnoiChatToTicket(
@@ -552,4 +554,67 @@ test("buildCommentRequestMessage: มีปุ่มข้ามที่ผู�
   assert.equal(msg.type, "quick_reply");
   assert.match(msg.text, /5 ดาว/);
   assert.equal(msg.quick_reply_choices[0].data, "plasom_review_skip:CC-20261126-AB12");
+});
+
+test("linkBotnoiChatToTicket: ลูกค้าที่มีใบงานเก่าเปิดอยู่ แจ้งซ่อมเพิ่ม -> หาห้องจากแชทในใบงานเก่า", async () => {
+  let ticketUpdate: any;
+  const tx = {
+    ticket: { update: async (args: any) => (ticketUpdate = args) },
+    botnoiChatEvent: { findMany: async () => [], deleteMany: async () => ({ count: 0 }) },
+    message: { createMany: async () => ({ count: 0 }) },
+  };
+  const restore = stubPrisma({
+    botnoiChatEvent: { findMany: async () => [] },
+    message: {
+      findMany: async (args: any) =>
+        args.select?.text
+          ? [
+              {
+                text: "เบอร์ 0812345678",
+                createdAt: new Date(5),
+                ticket: { botnoiSourceId: "U-old", botnoiChannel: "line_modular" },
+              },
+            ]
+          : [],
+    },
+    $transaction: async (fn: any) => fn(tx),
+  });
+  try {
+    const result = await linkBotnoiChatToTicket(
+      "p1",
+      { id: "t-new", customerPhone: "0812345678", extraFields: {} },
+      true
+    );
+    assert.equal(result?.sourceId, "U-old");
+    assert.equal(ticketUpdate.data.botnoiSourceId, "U-old");
+    assert.equal(ticketUpdate.data.botnoiChannel, "line_modular");
+  } finally {
+    restore();
+  }
+});
+
+test("linkBotnoiChatToTicket: ไม่เจอเบอร์ในแชท แต่ใบงานเก่าเบอร์เดียวกันผูกห้องไว้ -> ใช้ห้องเดิม", async () => {
+  let ticketUpdate: any;
+  const tx = {
+    ticket: { update: async (args: any) => (ticketUpdate = args) },
+    botnoiChatEvent: { findMany: async () => [], deleteMany: async () => ({ count: 0 }) },
+    message: { createMany: async () => ({ count: 0 }) },
+  };
+  const restore = stubPrisma({
+    botnoiChatEvent: { findMany: async () => [] },
+    message: { findMany: async () => [] },
+    ticket: { findFirst: async () => ({ botnoiSourceId: "U-prev", botnoiChannel: "line" }) },
+    $transaction: async (fn: any) => fn(tx),
+  });
+  try {
+    const result = await linkBotnoiChatToTicket(
+      "p1",
+      { id: "t-new", customerPhone: "0812345678", extraFields: {} },
+      true
+    );
+    assert.equal(result?.sourceId, "U-prev");
+    assert.equal(ticketUpdate.data.botnoiSourceId, "U-prev");
+  } finally {
+    restore();
+  }
 });
