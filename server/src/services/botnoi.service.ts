@@ -8,6 +8,7 @@ const BOTNOI_API_BASE = process.env.BOTNOI_API_BASE || "https://api-gateway.botn
 const REQUEST_TIMEOUT_MS = 8000;
 
 export const REVIEW_POSTBACK_PREFIX = "plasom_review";
+export const REVIEW_SKIP_COMMENT_PREFIX = "plasom_review_skip";
 
 export type BotnoiSource = {
   source_channel: string; // line / facebook / app
@@ -106,5 +107,18 @@ export function buildReviewRequestMessage(trackingCode: string): BotnoiOutgoingM
       label: `${"⭐".repeat(star)} ${star}`,
       data: `${REVIEW_POSTBACK_PREFIX}:${trackingCode}:${star}`,
     })),
+  };
+}
+
+/** ขอบคุณที่ให้ดาว + ชวนเขียนคำติชม (มีปุ่มข้ามได้) */
+export function buildCommentRequestMessage(trackingCode: string, rating: number): BotnoiOutgoingMessage {
+  return {
+    type: "quick_reply",
+    text:
+      `ขอบคุณสำหรับคะแนน ${rating} ดาวครับ 🙏\n` +
+      "มีอะไรอยากบอกเพิ่มเติมเกี่ยวกับบริการครั้งนี้ไหมครับ พิมพ์คำติชมส่งมาได้เลย",
+    quick_reply_choices: [
+      { type: "postback", label: "ไม่มีครับ", data: `${REVIEW_SKIP_COMMENT_PREFIX}:${trackingCode}` },
+    ],
   };
 }

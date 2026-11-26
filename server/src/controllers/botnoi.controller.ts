@@ -2,7 +2,12 @@ import crypto from "crypto";
 import { Request, Response, NextFunction } from "express";
 import { MessageSender, TicketStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { pushMessages, REVIEW_POSTBACK_PREFIX } from "../services/botnoi.service";
+import {
+  buildCommentRequestMessage,
+  pushMessages,
+  REVIEW_POSTBACK_PREFIX,
+  REVIEW_SKIP_COMMENT_PREFIX,
+} from "../services/botnoi.service";
 
 // ===========================
 // POST /api/botnoi/events?token=<BOTNOI_EVENT_TOKEN>
@@ -13,6 +18,8 @@ import { pushMessages, REVIEW_POSTBACK_PREFIX } from "../services/botnoi.service
 
 const ATTACH_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000; // หลังปิดงาน 24 ชม. ยังเก็บแชทเข้าใบงานเดิม
 const REVIEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // รับคะแนนแบบพิมพ์ตัวเลขภายใน 14 วัน
+const COMMENT_WINDOW_MS = 30 * 60 * 1000; // รอคำติชมหลังให้ดาวไม่เกิน 30 นาที
+const COMMENT_MAX_LENGTH = 1000;
 const BUFFER_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // แชทพักที่ไม่เคยเปิดใบงาน เก็บไม่เกิน 7 วัน
 
 type BotnoiMessageObject = {
@@ -119,6 +126,12 @@ export function parseReviewPostback(data: string | null | undefined) {
   return { trackingCode, rating };
 }
 
+export function parseReviewSkip(data: string | null | undefined): string | null {
+  if (!data) return null;
+  const [prefix, trackingCode] = data.split(":");
+  return prefix === REVIEW_SKIP_COMMENT_PREFIX && trackingCode ? trackingCode : null;
+}
+
 /** รับเฉพาะข้อความที่เป็นคะแนนล้วน ๆ เช่น "5", "4 ดาว", "⭐⭐⭐" */
 export function parseTypedRating(text: string): number | null {
   const t = text.trim();
@@ -134,6 +147,7 @@ function messageText(m: BotnoiMessageObject): string {
   if (m.type === "postback") {
     const review = parseReviewPostback(m.postback?.data);
     if (review) return `ให้คะแนน ${review.rating} ดาว`;
+    if (parseReviewSkip(m.postback?.data)) return "ไม่มีคำติชมเพิ่มเติม";
     return m.text || `[กดปุ่ม] ${m.postback?.data ?? ""}`.trim();
   }
   if (m.text) return m.text;
@@ -189,19 +203,86 @@ async function saveReview(
   if (existing) return false;
 
   await prisma.review.create({
-    data: { projectId, ticketId: ticket.id, customerName: ticket.customerName, rating, comment: "" },
+    data: {
+      projectId,
+      ticketId: ticket.id,
+      customerName: ticket.customerName,
+      rating,
+      comment: "",
+      commentRequestedAt: new Date(),
+    },
   });
 
   try {
     await pushMessages(
       source.botId,
       { source_channel: source.channel, source_type: "user", source_id: source.sourceId },
-      [{ type: "text", text: `ขอบคุณสำหรับคะแนน ${rating} ดาวครับ 🙏 ไว้ใจให้เราดูแลอีกนะครับ` }]
+      [buildCommentRequestMessage(ticket.trackingCode, rating)]
     );
   } catch (err) {
-    console.error("⚠️ [Botnoi] ส่งข้อความขอบคุณรีวิวไม่สำเร็จ:", (err as Error).message);
+    console.error("⚠️ [Botnoi] ส่งข้อความชวนเขียนคำติชมไม่สำเร็จ:", (err as Error).message);
   }
   return true;
+}
+
+async function replyQuietly(
+  source: { botId: string; sourceId: string; channel: string },
+  text: string
+): Promise<void> {
+  try {
+    await pushMessages(
+      source.botId,
+      { source_channel: source.channel, source_type: "user", source_id: source.sourceId },
+      [{ type: "text", text }]
+    );
+  } catch (err) {
+    console.error("⚠️ [Botnoi] ส่งข้อความตอบกลับไม่สำเร็จ:", (err as Error).message);
+  }
+}
+
+/**
+ * ลูกค้าเพิ่งให้ดาว แล้วพิมพ์ข้อความถัดมา (ภายใน 30 นาที) = คำติชม
+ * หรือกดปุ่ม "ไม่มีครับ" = ไม่รอคำติชมแล้ว
+ */
+async function handleReviewComment(
+  projectId: string,
+  message: ParsedChatMessage,
+  source: { botId: string; sourceId: string; channel: string },
+  now: Date
+): Promise<"saved" | "skipped" | null> {
+  const skipCode = parseReviewSkip(message.postbackData);
+  const pending = await prisma.review.findFirst({
+    where: {
+      projectId,
+      comment: "",
+      commentRequestedAt: { gte: new Date(now.getTime() - COMMENT_WINDOW_MS) },
+      ticket: {
+        botnoiSourceId: source.sourceId,
+        ...(skipCode ? { trackingCode: skipCode } : {}),
+      },
+    },
+    select: { id: true },
+    orderBy: { commentRequestedAt: "desc" },
+  });
+  if (!pending) return null;
+
+  if (skipCode) {
+    await prisma.review.update({ where: { id: pending.id }, data: { commentRequestedAt: null } });
+    await replyQuietly(source, "รับทราบครับ ขอบคุณที่ใช้บริการนะครับ 🙏");
+    return "skipped";
+  }
+
+  // ไม่นับปุ่มอื่น ๆ / สติกเกอร์ / รูปภาพ เป็นคำติชม
+  if (message.postbackData || message.text.startsWith("[")) return null;
+  const comment = message.text.trim().slice(0, COMMENT_MAX_LENGTH);
+  if (!comment) return null;
+
+  await prisma.review.update({
+    where: { id: pending.id },
+    data: { comment, commentRequestedAt: null },
+  });
+  await replyQuietly(source, "ขอบคุณสำหรับคำติชมครับ 🙏 ทางร้านจะนำไปปรับปรุงบริการให้ดียิ่งขึ้น");
+  return "saved";
 }
 
 export async function handleBotnoiEvent(
@@ -274,6 +355,7 @@ export async function handleBotnoiEvent(
 
     // ---------- รีวิว ----------
     let reviewSaved = false;
+    let commentResult: "saved" | "skipped" | null = null;
     if (messages[0].sender === MessageSender.CUSTOMER) {
       const fromButton = parseReviewPostback(messages[0].postbackData);
       const typed = fromButton ? null : parseTypedRating(messages[0].text);
@@ -310,6 +392,15 @@ export async function handleBotnoiEvent(
         if (ticket) {
           reviewSaved = await saveReview(projectId, ticket, typed, { botId: resolvedBotId ?? "", sourceId, channel });
         }
+      }
+
+      if (!reviewSaved && !fromButton) {
+        commentResult = await handleReviewComment(
+          projectId,
+          messages[0],
+          { botId: resolvedBotId ?? "", sourceId, channel },
+          now
+        );
       }
     }
 
@@ -367,6 +458,7 @@ export async function handleBotnoiEvent(
       stored: attachTo ? "ticket" : "buffer",
       count: messages.length,
       reviewSaved,
+      ...(commentResult ? { reviewComment: commentResult } : {}),
     });
   } catch (err) {
     next(err);

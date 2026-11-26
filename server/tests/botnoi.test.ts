@@ -122,6 +122,7 @@ test("handleBotnoiEvent: ยังไม่มีใบงาน -> พักแ
   const restore = stubPrisma({
     project: { findFirst: async () => ({ id: "p1" }) },
     ticket: { findFirst: async () => null },
+    review: { findFirst: async () => null },
     botnoiChatEvent: {
       createMany: async (args: any) => {
         buffered = args;
@@ -159,6 +160,7 @@ test("handleBotnoiEvent: มีใบงานที่ยังเปิดอ�
     ticket: {
       findFirst: async () => ({ id: "t1", status: "SUBMITTED", updatedAt: new Date() }),
     },
+    review: { findFirst: async () => null },
     message: {
       createMany: async (args: any) => {
         saved = args;
@@ -458,4 +460,96 @@ test("getProjectConversations: รวมแชทที่ยังไม่เ�
   } finally {
     restore();
   }
+});
+
+function commentTestStubs(pending: { id: string } | null, updates: any[]) {
+  return stubPrisma({
+    project: { findFirst: async () => ({ id: "p1" }) },
+    ticket: {
+      findFirst: async (args: any) =>
+        args.where?.review === null ? null : { id: "t1", status: "COMPLETED", updatedAt: new Date() },
+    },
+    review: {
+      findFirst: async () => pending,
+      update: async (args: any) => {
+        updates.push(args);
+        return {};
+      },
+    },
+    message: { createMany: async () => ({ count: 1 }) },
+    botnoiEventLog: { create: async () => ({}), deleteMany: async () => ({ count: 0 }) },
+  });
+}
+
+test("handleBotnoiEvent: พิมพ์หลังให้ดาว -> บันทึกเป็นคำติชม", async () => {
+  const savedToken = process.env.BOTNOI_CHANNEL_ACCESS_TOKEN;
+  delete process.env.BOTNOI_CHANNEL_ACCESS_TOKEN;
+  const updates: any[] = [];
+  const restore = commentTestStubs({ id: "r1" }, updates);
+  try {
+    const res = mockRes();
+    await handleBotnoiEvent(
+      { query: { token: "test-event-token" }, header: () => undefined, body: incoming("ช่างสุภาพมาก มาตรงเวลา") } as any,
+      res,
+      nextSpy() as any
+    );
+    assert.equal(res.body.reviewComment, "saved");
+    assert.equal(updates[0].where.id, "r1");
+    assert.equal(updates[0].data.comment, "ช่างสุภาพมาก มาตรงเวลา");
+    assert.equal(updates[0].data.commentRequestedAt, null);
+  } finally {
+    restore();
+    if (savedToken) process.env.BOTNOI_CHANNEL_ACCESS_TOKEN = savedToken;
+  }
+});
+
+test("handleBotnoiEvent: กดปุ่ม ไม่มีครับ -> ไม่รอคำติชมแล้ว และไม่บันทึกข้อความเป็นคำติชม", async () => {
+  const savedToken = process.env.BOTNOI_CHANNEL_ACCESS_TOKEN;
+  delete process.env.BOTNOI_CHANNEL_ACCESS_TOKEN;
+  const updates: any[] = [];
+  const restore = commentTestStubs({ id: "r1" }, updates);
+  try {
+    const res = mockRes();
+    const body = incoming("", {
+      type: "postback",
+      text: undefined,
+      postback: { data: "plasom_review_skip:CC-20261126-AB12" },
+    });
+    await handleBotnoiEvent(
+      { query: { token: "test-event-token" }, header: () => undefined, body } as any,
+      res,
+      nextSpy() as any
+    );
+    assert.equal(res.body.reviewComment, "skipped");
+    assert.equal(updates[0].data.commentRequestedAt, null);
+    assert.equal(updates[0].data.comment, undefined);
+  } finally {
+    restore();
+    if (savedToken) process.env.BOTNOI_CHANNEL_ACCESS_TOKEN = savedToken;
+  }
+});
+
+test("handleBotnoiEvent: ไม่มีรีวิวที่รอคำติชม -> ข้อความปกติไม่ถูกนับเป็นคำติชม", async () => {
+  const updates: any[] = [];
+  const restore = commentTestStubs(null, updates);
+  try {
+    const res = mockRes();
+    await handleBotnoiEvent(
+      { query: { token: "test-event-token" }, header: () => undefined, body: incoming("แอร์เสียอีกแล้วครับ") } as any,
+      res,
+      nextSpy() as any
+    );
+    assert.equal(res.body.reviewComment, undefined);
+    assert.equal(updates.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("buildCommentRequestMessage: มีปุ่มข้ามที่ผูกรหัสใบงาน", async () => {
+  const { buildCommentRequestMessage } = await import("../src/services/botnoi.service");
+  const msg = buildCommentRequestMessage("CC-20261126-AB12", 5) as any;
+  assert.equal(msg.type, "quick_reply");
+  assert.match(msg.text, /5 ดาว/);
+  assert.equal(msg.quick_reply_choices[0].data, "plasom_review_skip:CC-20261126-AB12");
 });
