@@ -13,6 +13,7 @@ import { pushMessages, REVIEW_POSTBACK_PREFIX } from "../services/botnoi.service
 
 const ATTACH_COMPLETED_WINDOW_MS = 24 * 60 * 60 * 1000; // หลังปิดงาน 24 ชม. ยังเก็บแชทเข้าใบงานเดิม
 const REVIEW_WINDOW_MS = 14 * 24 * 60 * 60 * 1000; // รับคะแนนแบบพิมพ์ตัวเลขภายใน 14 วัน
+const BUFFER_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // แชทพักที่ไม่เคยเปิดใบงาน เก็บไม่เกิน 7 วัน
 
 type BotnoiMessageObject = {
   mid?: string;
@@ -266,6 +267,10 @@ export async function handleBotnoiEvent(
           sentAt: m.sentAt,
         })),
         skipDuplicates: true,
+      });
+      // ลบแชทพักเก่าของร้านนี้ที่ไม่เคยกลายเป็นใบงาน (ไม่เก็บข้อมูลลูกค้าไว้นานเกินจำเป็น)
+      await prisma.botnoiChatEvent.deleteMany({
+        where: { projectId, sentAt: { lt: new Date(now.getTime() - BUFFER_RETENTION_MS) } },
       });
     }
 

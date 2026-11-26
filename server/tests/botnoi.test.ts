@@ -105,6 +105,7 @@ test("handleBotnoiEvent: bot ที่ไม่รู้จัก ตอบ 200 
 
 test("handleBotnoiEvent: ยังไม่มีใบงาน -> พักแชทไว้ใน BotnoiChatEvent", async () => {
   let buffered: any;
+  let pruned: any;
   const restore = stubPrisma({
     project: { findFirst: async () => ({ id: "p1" }) },
     ticket: { findFirst: async () => null },
@@ -112,6 +113,10 @@ test("handleBotnoiEvent: ยังไม่มีใบงาน -> พักแ
       createMany: async (args: any) => {
         buffered = args;
         return { count: 1 };
+      },
+      deleteMany: async (args: any) => {
+        pruned = args;
+        return { count: 0 };
       },
     },
   });
@@ -127,6 +132,8 @@ test("handleBotnoiEvent: ยังไม่มีใบงาน -> พักแ
     assert.equal(buffered.data[0].sourceId, "U-cust");
     assert.equal(buffered.data[0].mid, "m-1");
     assert.equal(buffered.skipDuplicates, true);
+    assert.equal(pruned.where.projectId, "p1");
+    assert.ok(pruned.where.sentAt.lt instanceof Date);
   } finally {
     restore();
   }
