@@ -15,6 +15,7 @@ import ticketRouter from "./routes/tickets";
 import adminRouter from "./routes/admin";
 import projectRouter from "./routes/projects";
 import webhookRouter from "./routes/webhooks";
+import botnoiRouter from "./routes/botnoi.routes";
 import { getTechnicians } from "./controllers/admin.controller";
 
 const app = express();
@@ -64,6 +65,9 @@ app.use(
 // จำกัดขนาด payload เพื่อป้องกัน Memory Exhaustion / DoS
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+
+// Botnoi ส่ง event ของทุกร้านมาจาก IP ชุดเดียวกัน จึงต่อไว้ก่อน rate limit รวม (มี token ป้องกันแล้ว)
+app.use("/api/botnoi", botnoiRouter);
 
 // Rate Limit รวมสำหรับ /api (ป้องกัน API Abuse / DoS)
 const apiLimiter = rateLimit({

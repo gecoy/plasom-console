@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { linkBotnoiChatToTicket } from "../lib/botnoiChat";
 import { prisma } from "../lib/prisma";
 import {
   createTicketSchema,
@@ -673,6 +674,15 @@ async function handleBotnoiTicket(
 
       return t;
     });
+
+    // ผูกห้องแชท Botnoi เข้ากับใบงาน + ย้ายแชทที่คุยก่อนเปิดใบงานเข้ามา (ไม่ให้ล้มการสร้างใบงาน)
+    if (projectId) {
+      try {
+        await linkBotnoiChatToTicket(projectId, createdTicket, hasRealPhone);
+      } catch (linkErr) {
+        console.error("⚠️ [Botnoi] ผูกประวัติแชทกับใบงานไม่สำเร็จ:", (linkErr as Error).message);
+      }
+    }
 
     res.status(201).json({
       success: true,

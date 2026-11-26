@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { createHash, randomBytes } from "crypto";
 import { Prisma, TechnicianStatus, TicketStatus } from "@prisma/client";
+import { requestReviewForTicket } from "../lib/botnoiChat";
 import { prisma } from "../lib/prisma";
 import { AuthRequest } from "../middleware/auth";
 import {
@@ -620,7 +621,18 @@ export async function updateProjectTicket(
       });
     });
 
-    res.json({ success: true, data: updatedTicket });
+    // ปิดงานแล้ว -> ส่งข้อความขอรีวิวเข้าห้องแชท Botnoi ของลูกค้า (ล้มเหลวก็ไม่กระทบการปิดงาน)
+    let reviewRequest: string | undefined;
+    if (data.status === TicketStatus.COMPLETED && current.status !== TicketStatus.COMPLETED) {
+      try {
+        reviewRequest = await requestReviewForTicket(ticketId);
+      } catch (pushErr) {
+        reviewRequest = "failed";
+        console.error("⚠️ [Botnoi] ส่งข้อความขอรีวิวไม่สำเร็จ:", (pushErr as Error).message);
+      }
+    }
+
+    res.json({ success: true, data: updatedTicket, ...(reviewRequest ? { reviewRequest } : {}) });
   } catch (err) {
     next(err);
   }

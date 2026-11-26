@@ -85,8 +85,10 @@ model Project {
   tickets      Ticket[]
   technicians  Technician[]
   reviews      Review[]
+  botnoiChatEvents BotnoiChatEvent[]
 
   @@index([ownerId])
+  @@index([botnoiBotId])
 }
 
 model Technician {
@@ -118,6 +120,11 @@ model Ticket {
   extraFields   Json        @default("{}")
   status        TicketStatus @default(SUBMITTED)
 
+  // ห้องแชท Botnoi ที่ผูกกับใบงานนี้ (ใช้รับประวัติแชทและส่งข้อความขอรีวิว)
+  botnoiSourceId    String?
+  botnoiChannel     String?   // line / facebook / app
+  reviewRequestedAt DateTime?
+
   // ข้อมูลผู้แจ้ง (ลูกค้าอาจไม่ได้ล็อกอิน)
   customerName  String
   customerPhone String
@@ -145,6 +152,7 @@ model Ticket {
   @@index([customerPhone])
   @@index([status])
   @@index([projectId, createdAt])
+  @@index([projectId, botnoiSourceId])
 }
 
 model TicketImage {
@@ -168,6 +176,7 @@ model Message {
   text      String
   fromStaff Boolean  @default(false) // Legacy staff/customer flag
   sender    MessageSender @default(CUSTOMER)
+  botnoiMid String?  @unique // message id จาก Botnoi กันบันทึกซ้ำ
 
   ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   ticketId  String
@@ -194,4 +203,24 @@ model Review {
   user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([projectId, createdAt])
+}
+
+// ===========================
+// แชทจาก Botnoi ที่ยังไม่มีใบงานให้ผูก (พักไว้ แล้วย้ายเข้า Message เมื่อสร้างใบงาน)
+// ===========================
+model BotnoiChatEvent {
+  id        String        @id @default(cuid())
+  projectId String
+  sourceId  String
+  channel   String
+  sender    MessageSender
+  text      String
+  mid       String?       @unique
+  sentAt    DateTime
+  createdAt DateTime      @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sentAt])
+  @@index([projectId, sourceId, sentAt])
 }
