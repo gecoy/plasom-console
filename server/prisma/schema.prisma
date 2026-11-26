@@ -217,6 +217,7 @@ model BotnoiChatEvent {
   channel   String
   sender    MessageSender
   text      String
+  customerName String?    // ชื่อโปรไฟล์ LINE ของลูกค้า (แสดงในหน้าแชทก่อนเปิดใบงาน)
   mid       String?       @unique
   sentAt    DateTime
   createdAt DateTime      @default(now())

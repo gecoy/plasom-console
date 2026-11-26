@@ -321,7 +321,8 @@ function mapTicketToThread(projectId: string, t: any, msgs: any[]): ChatThread {
     channel,
     lastMessage: lastMsg?.text || t.symptom || '',
     updatedAt: lastActivity ? new Date(lastActivity).toLocaleDateString('th-TH') : 'วันนี้',
-    openedTicketCode: t.trackingCode,
+    openedTicketCode: t.trackingCode || undefined,
+    pending: Boolean(t.pending),
     messages: mappedMessages,
   };
 }

@@ -45,6 +45,8 @@ export interface ChatThread {
   lastMessage: string;
   updatedAt: string;
   openedTicketCode?: string;
+  /** ลูกค้าทักบอทแล้ว แต่ยังไม่ได้เปิดใบงาน */
+  pending?: boolean;
   messages: { sender: 'USER' | 'BOT'; text: string; time: string }[];
 }
 

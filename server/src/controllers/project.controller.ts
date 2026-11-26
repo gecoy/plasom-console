@@ -389,6 +389,7 @@ export async function getProjectTickets(
 // ===========================
 const CONVERSATION_TICKET_LIMIT = 30;
 const CONVERSATION_MESSAGE_LIMIT = 200;
+const CONVERSATION_PENDING_LIMIT = 500;
 
 export async function getProjectConversations(
   req: AuthRequest,
@@ -405,7 +406,7 @@ export async function getProjectConversations(
       return;
     }
 
-    const [messageAgg, ticketAgg] = await Promise.all([
+    const [messageAgg, ticketAgg, pendingAgg] = await Promise.all([
       prisma.message.aggregate({
         where: { ticket: { projectId } },
         _max: { createdAt: true },
@@ -416,12 +417,19 @@ export async function getProjectConversations(
         _max: { updatedAt: true },
         _count: { _all: true },
       }),
+      prisma.botnoiChatEvent.aggregate({
+        where: { projectId },
+        _max: { createdAt: true },
+        _count: { _all: true },
+      }),
     ]);
     const version = [
       messageAgg._max.createdAt?.getTime() ?? 0,
       messageAgg._count._all,
       ticketAgg._max.updatedAt?.getTime() ?? 0,
       ticketAgg._count._all,
+      pendingAgg._max.createdAt?.getTime() ?? 0,
+      pendingAgg._count._all,
     ].join("-");
 
     if (typeof req.query.version === "string" && req.query.version === version) {
@@ -450,13 +458,53 @@ export async function getProjectConversations(
       },
     });
 
-    const data = tickets
-      .map((t) => {
-        const messages = [...t.messages].reverse();
-        const lastActivityAt = messages[messages.length - 1]?.createdAt ?? t.createdAt;
-        return { ...t, messages, lastActivityAt };
-      })
-      .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
+    const ticketThreads = tickets.map((t) => {
+      const messages = [...t.messages].reverse();
+      const lastActivityAt = messages[messages.length - 1]?.createdAt ?? t.createdAt;
+      return { ...t, pending: false, messages, lastActivityAt };
+    });
+
+    // แชทจาก Botnoi ที่ลูกค้ายังไม่ได้เปิดใบงาน (แยกห้องตามลูกค้า)
+    const pendingEvents = await prisma.botnoiChatEvent.findMany({
+      where: { projectId },
+      orderBy: { sentAt: "asc" },
+      take: CONVERSATION_PENDING_LIMIT,
+      select: { id: true, sourceId: true, sender: true, text: true, customerName: true, sentAt: true },
+    });
+    const pendingBySource = new Map<string, typeof pendingEvents>();
+    for (const e of pendingEvents) {
+      const list = pendingBySource.get(e.sourceId) ?? [];
+      list.push(e);
+      pendingBySource.set(e.sourceId, list);
+    }
+    const pendingThreads = [...pendingBySource.entries()].map(([sourceId, events]) => {
+      const last = events[events.length - 1];
+      const name = [...events].reverse().find((e) => e.customerName)?.customerName;
+      return {
+        // ไม่ส่ง LINE user id จริงออกไปหน้าเว็บ ใช้ hash แทน
+        id: `src-${createHash("sha256").update(sourceId).digest("hex").slice(0, 16)}`,
+        trackingCode: null,
+        customerName: name || "ลูกค้า LINE",
+        brand: null,
+        symptom: "",
+        extraFields: {},
+        createdAt: events[0].sentAt,
+        updatedAt: last.sentAt,
+        pending: true,
+        messages: events.map((e) => ({
+          id: e.id,
+          text: e.text,
+          sender: e.sender,
+          fromStaff: e.sender === "STAFF",
+          createdAt: e.sentAt,
+        })),
+        lastActivityAt: last.sentAt,
+      };
+    });
+
+    const data = [...pendingThreads, ...ticketThreads].sort(
+      (a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime()
+    );
 
     res.json({ success: true, changed: true, version, data });
   } catch (err) {

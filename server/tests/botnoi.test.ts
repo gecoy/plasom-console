@@ -406,3 +406,56 @@ test("parseBotnoiEvent: ข้อความบอทที่ใช้ mid เ
   assert.equal(cust[0].mid, "m-1");
   assert.deepEqual(bot.map((m) => m.mid), ["m-1:out:0", "m-1:out:1"]);
 });
+
+test("getProjectConversations: รวมแชทที่ยังไม่เปิดใบงาน + ตอบ changed:false เมื่อ version เดิม", async () => {
+  const { getProjectConversations } = await import("../src/controllers/project.controller");
+  const t0 = new Date("2026-11-26T09:00:00Z");
+  const t1 = new Date("2026-11-26T09:05:00Z");
+  const restore = stubPrisma({
+    project: { findFirst: async () => ({ id: "p1" }) },
+    message: { aggregate: async () => ({ _max: { createdAt: t0 }, _count: { _all: 2 } }) },
+    ticket: {
+      aggregate: async () => ({ _max: { updatedAt: t0 }, _count: { _all: 1 } }),
+      findMany: async () => [
+        {
+          id: "t1",
+          trackingCode: "CC-1",
+          customerName: "ลูกค้าเก่า",
+          brand: null,
+          symptom: "",
+          extraFields: {},
+          createdAt: t0,
+          updatedAt: t0,
+          messages: [{ id: "m1", text: "hi", sender: "CUSTOMER", fromStaff: false, createdAt: t0 }],
+        },
+      ],
+    },
+    botnoiChatEvent: {
+      aggregate: async () => ({ _max: { createdAt: t1 }, _count: { _all: 2 } }),
+      findMany: async () => [
+        { id: "e1", sourceId: "U-new", sender: "CUSTOMER", text: "สวัสดี", customerName: "น้องใหม่", sentAt: t1 },
+        { id: "e2", sourceId: "U-new", sender: "BOT", text: "สวัสดีครับ", customerName: null, sentAt: t1 },
+      ],
+    },
+  });
+  try {
+    const res = mockRes();
+    const req: any = { user: { id: "u1" }, params: { projectId: "p1" }, query: {} };
+    await getProjectConversations(req, res, nextSpy() as any);
+    assert.equal(res.body.changed, true);
+    assert.equal(res.body.data.length, 2);
+    const pending = res.body.data[0];
+    assert.equal(pending.pending, true);
+    assert.equal(pending.customerName, "น้องใหม่");
+    assert.equal(pending.trackingCode, null);
+    assert.ok(!pending.id.includes("U-new"), "ไม่ส่ง LINE user id จริงออกไป");
+    assert.deepEqual(pending.messages.map((m: any) => m.sender), ["CUSTOMER", "BOT"]);
+
+    const res2 = mockRes();
+    await getProjectConversations({ ...req, query: { version: res.body.version } }, res2, nextSpy() as any);
+    assert.equal(res2.body.changed, false);
+    assert.equal(res2.body.data, undefined);
+  } finally {
+    restore();
+  }
+});

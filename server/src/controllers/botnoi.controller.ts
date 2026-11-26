@@ -346,6 +346,10 @@ export async function handleBotnoiEvent(
           channel,
           sender: m.sender,
           text: m.text,
+          customerName:
+            m.sender === MessageSender.CUSTOMER && event.sender?.display_name
+              ? String(event.sender.display_name).slice(0, 100)
+              : null,
           mid: m.mid,
           sentAt: m.sentAt,
         })),

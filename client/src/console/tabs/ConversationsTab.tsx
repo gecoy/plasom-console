@@ -326,6 +326,11 @@ function ConversationsTabContent({ project }: Props) {
                           เปิดเคส: {th.openedTicketCode}
                         </span>
                       )}
+                      {!th.openedTicketCode && th.pending && (
+                        <span className="text-[11px] px-2 py-0.5 rounded bg-sky-500/10 text-sky-300 border border-sky-500/30 font-medium">
+                          กำลังคุยกับบอท · ยังไม่เปิดใบงาน
+                        </span>
+                      )}
                     </div>
                   </button>
                 ))
