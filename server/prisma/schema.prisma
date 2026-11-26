@@ -38,6 +38,7 @@ enum Role {
 enum TechnicianStatus {
   AVAILABLE
   BUSY
+  INACTIVE // พักงาน/ปิดใช้งาน ไม่แสดงในรายชื่อให้มอบหมายงาน
 }
 
 enum MessageSender {

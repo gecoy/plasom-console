@@ -372,6 +372,14 @@ export async function fetchProjectTechniciansApi(projectId: string): Promise<any
   return list;
 }
 
+/** ข้อความ error จาก server (Zod/404) สำหรับแสดงให้ผู้ใช้ ถ้าไม่มีใช้ข้อความสำรอง */
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+  const data = (err as any)?.response?.data;
+  if (typeof data?.error === 'string' && data.error) return data.error;
+  if (Array.isArray(data?.details) && data.details[0]?.message) return String(data.details[0].message);
+  return fallback;
+}
+
 export async function createProjectTechnicianApi(
   projectId: string,
   payload: { name: string; phone: string; area: string; specialty?: string | null }
@@ -393,7 +401,7 @@ export async function updateProjectTechnicianApi(
     phone?: string;
     area?: string;
     specialty?: string | null;
-    status?: 'AVAILABLE' | 'BUSY';
+    status?: 'AVAILABLE' | 'BUSY' | 'INACTIVE';
   }
 ) {
   const res = await api.patch(`/projects/${projectId}/technicians/${technicianId}`, payload);

@@ -722,7 +722,9 @@ export function TicketsTab({ project }: Props) {
   const [dbTechs, setDbTechs] = useState<(TechnicianItem & { id: string })[]>(() =>
     project.id.startsWith('proj-')
       ? []
-      : readCachedTechnicians(project.id).map((tc: any) => mapRawTechToItem(tc, project.id))
+      : readCachedTechnicians(project.id)
+          .filter((tc: any) => tc.status !== 'INACTIVE')
+          .map((tc: any) => mapRawTechToItem(tc, project.id))
   );
 
   useEffect(() => {
@@ -735,7 +737,12 @@ export function TicketsTab({ project }: Props) {
           fetchProjectTechniciansApi(project.id),
         ]);
         if (cancelled) return;
-        setDbTechs(rawTechs.map((tc: any) => mapRawTechToItem(tc, project.id)));
+        // ช่างที่พักงาน (INACTIVE) ไม่ให้เลือกมอบหมายงาน
+        setDbTechs(
+          rawTechs
+            .filter((tc: any) => tc.status !== 'INACTIVE')
+            .map((tc: any) => mapRawTechToItem(tc, project.id))
+        );
         setTickets(rawTickets.map((t: any) => mapRawTicketToExtended(t, project.id)));
       } catch {
         // fallback

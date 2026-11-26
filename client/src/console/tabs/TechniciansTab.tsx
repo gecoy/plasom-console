@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Plus,
   Pencil,
@@ -32,6 +32,7 @@ import {
   createProjectTechnicianApi,
   updateProjectTechnicianApi,
   deleteProjectTechnicianApi,
+  getApiErrorMessage,
   rotateWebhookSecretApi,
 } from '../consoleApi';
 
@@ -95,26 +96,47 @@ const TECH_STATUS_CONFIG: Record<
   },
 };
 
+/** แปลงข้อมูลช่างจาก API เป็นรูปแบบที่หน้าจอใช้ (ช่อง LINE ID เก็บในฟิลด์ area ของฐานข้อมูล) */
+function mapApiTech(t: any, projectId: string): ExtendedTechnician {
+  const status: TechStatus =
+    t.status === 'BUSY' || t.status === 'INACTIVE' ? t.status : 'AVAILABLE';
+  return {
+    id: t.id,
+    projectId,
+    name: t.name,
+    specialty: t.specialty || 'ช่างประจำร้าน',
+    phone: t.phone || '-',
+    lineId: t.area && t.area !== '-' ? t.area : '',
+    activeJobs: Number(t.activeJobs ?? t._count?.tickets ?? 0),
+    status,
+    rating: t.rating ? Number(t.rating) : undefined,
+    reviewCount: t.reviewCount ? Number(t.reviewCount) : 0,
+    completedJobs: Number(t.completedJobs ?? 0),
+    maxDailyJobs: 4,
+  };
+}
+
 export function TechniciansTab({ project }: Props) {
-  const [techs, setTechs] = useState<ExtendedTechnician[]>(() => {
-    if (!project.id.startsWith('proj-')) {
-      return readCachedTechnicians(project.id).map((t: any) => ({
-        id: t.id,
-        projectId: project.id,
-        name: t.name,
-        specialty: t.specialty || 'ช่างประจำร้าน',
-        phone: t.phone || '-',
-        lineId: t.area || '-',
-        activeJobs: Number(t.activeJobs ?? t._count?.tickets ?? 0),
-        status: (t.status as TechStatus) || 'AVAILABLE',
-        rating: t.rating ? Number(t.rating) : undefined,
-        reviewCount: t.reviewCount ? Number(t.reviewCount) : 0,
-        completedJobs: Number(t.completedJobs ?? 0),
-        maxDailyJobs: 4,
-      }));
+  const isDemo = project.id.startsWith('proj-');
+  const [techs, setTechs] = useState<ExtendedTechnician[]>(() =>
+    isDemo ? [] : readCachedTechnicians(project.id).map((t: any) => mapApiTech(t, project.id))
+  );
+  const [saving, setSaving] = useState(false);
+
+  // โหลดรายชื่อช่างจริงจากฐานข้อมูลทุกครั้งที่เปิดหน้า (cache ใช้แค่แสดงผลระหว่างรอ)
+  const reloadTechs = useCallback(async () => {
+    if (isDemo) return;
+    try {
+      const list = await fetchProjectTechniciansApi(project.id);
+      setTechs(list.map((t: any) => mapApiTech(t, project.id)));
+    } catch {
+      // ใช้ข้อมูลจาก cache ต่อไป
     }
-    return [];
-  });
+  }, [isDemo, project.id]);
+
+  useEffect(() => {
+    reloadTechs();
+  }, [reloadTechs]);
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -162,32 +184,48 @@ export function TechniciansTab({ project }: Props) {
     return matchSearch && matchStatus;
   });
 
-  // Handle Add Technician (ข้อ 5)
-  const handleAddTech = () => {
-    if (!newName.trim()) {
-      alert('กรุณาระบุชื่อช่าง');
+  // Handle Add Technician (ข้อ 5) — บันทึกลงฐานข้อมูลจริง
+  const handleAddTech = async () => {
+    const name = newName.trim();
+    const phone = newPhone.trim();
+    if (name.length < 2) {
+      showToast('กรุณาระบุชื่อช่าง (อย่างน้อย 2 ตัวอักษร)', 'error');
+      return;
+    }
+    if (phone.replace(/\D/g, '').length < 9) {
+      showToast('กรุณาระบุเบอร์โทรช่างให้ถูกต้อง', 'error');
+      return;
+    }
+    if (isDemo) {
+      showToast('ร้านตัวอย่างไม่สามารถบันทึกช่างได้ กรุณาใช้ร้านจริง', 'info');
       return;
     }
 
-    const added: ExtendedTechnician = {
-      id: `tech-${Date.now()}`,
-      projectId: project.id,
-      name: newName.trim(),
-      specialty: newSpecialty.trim() || 'ช่างประจำร้าน',
-      phone: newPhone.trim() || '08X-XXX-XXXX',
-      lineId: newLineId.trim() || `@tech_${newName.trim().slice(0, 4)}`,
-      activeJobs: 0,
-      status: newStatus,
-    };
-
-    setTechs((prev) => [...prev, added]);
-    setNewName('');
-    setNewSpecialty('');
-    setNewPhone('');
-    setNewLineId('');
-    setNewStatus('AVAILABLE');
-    setIsAddModalOpen(false);
-    showToast(`เพิ่มช่าง "${added.name}" เข้าโปรเจกต์เรียบร้อย`);
+    setSaving(true);
+    try {
+      const created = await createProjectTechnicianApi(project.id, {
+        name,
+        phone,
+        area: newLineId.trim() || '-',
+        specialty: newSpecialty.trim() || null,
+      });
+      let saved = created;
+      if (created?.id && newStatus !== 'AVAILABLE') {
+        saved = (await updateProjectTechnicianApi(project.id, created.id, { status: newStatus })) || created;
+      }
+      if (saved) setTechs((prev) => [...prev, mapApiTech(saved, project.id)]);
+      setNewName('');
+      setNewSpecialty('');
+      setNewPhone('');
+      setNewLineId('');
+      setNewStatus('AVAILABLE');
+      setIsAddModalOpen(false);
+      showToast(`เพิ่มช่าง "${name}" เข้าโปรเจกต์เรียบร้อย`);
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'บันทึกช่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Open Edit Modal (ข้อ 5)
@@ -200,56 +238,83 @@ export function TechniciansTab({ project }: Props) {
     setEditStatus(tech.status);
   };
 
-  // Handle Save Edit (ข้อ 5)
-  const handleSaveEdit = () => {
+  // Handle Save Edit (ข้อ 5) — บันทึกลงฐานข้อมูลจริง
+  const handleSaveEdit = async () => {
     if (!editingTech) return;
-    if (!editName.trim()) {
-      alert('กรุณาระบุชื่อช่าง');
+    const name = editName.trim();
+    const phone = editPhone.trim();
+    if (name.length < 2) {
+      showToast('กรุณาระบุชื่อช่าง (อย่างน้อย 2 ตัวอักษร)', 'error');
+      return;
+    }
+    if (phone && phone.replace(/\D/g, '').length < 9) {
+      showToast('กรุณาระบุเบอร์โทรช่างให้ถูกต้อง', 'error');
+      return;
+    }
+    if (isDemo) {
+      showToast('ร้านตัวอย่างไม่สามารถแก้ไขช่างได้', 'info');
       return;
     }
 
-    setTechs((prev) =>
-      prev.map((t) =>
-        t.id === editingTech.id
-          ? {
-              ...t,
-              name: editName.trim(),
-              specialty: editSpecialty.trim() || 'ช่างประจำร้าน',
-              phone: editPhone.trim() || t.phone,
-              lineId: editLineId.trim() || t.lineId,
-              status: editStatus,
-            }
-          : t
-      )
-    );
-
-    showToast(`บันทึกข้อมูล "${editName.trim()}" เรียบร้อยแล้ว`);
-    setEditingTech(null);
+    setSaving(true);
+    try {
+      const updated = await updateProjectTechnicianApi(project.id, editingTech.id, {
+        name,
+        ...(phone ? { phone } : {}),
+        area: editLineId.trim() || '-',
+        specialty: editSpecialty.trim() || null,
+        status: editStatus,
+      });
+      if (updated) {
+        setTechs((prev) => prev.map((t) => (t.id === editingTech.id ? mapApiTech(updated, project.id) : t)));
+      }
+      showToast(`บันทึกข้อมูล "${name}" เรียบร้อยแล้ว`);
+      setEditingTech(null);
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'บันทึกการแก้ไขไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Handle Confirm Delete
-  const handleConfirmDelete = () => {
+  // Handle Confirm Delete — ลบในฐานข้อมูลจริง (ใบงานที่เคยมอบหมายจะถูกถอดช่างออก)
+  const handleConfirmDelete = async () => {
     if (!deletingTech) return;
-    const targetName = deletingTech.name;
-    setTechs((prev) => prev.filter((t) => t.id !== deletingTech.id));
-    setDeletingTech(null);
-    showToast(`ลบช่าง "${targetName}" ออกจากระบบแล้ว`);
+    const target = deletingTech;
+    if (isDemo) {
+      setDeletingTech(null);
+      showToast('ร้านตัวอย่างไม่สามารถลบช่างได้', 'info');
+      return;
+    }
+    setSaving(true);
+    try {
+      await deleteProjectTechnicianApi(project.id, target.id);
+      setTechs((prev) => prev.filter((t) => t.id !== target.id));
+      setDeletingTech(null);
+      showToast(`ลบช่าง "${target.name}" ออกจากระบบแล้ว`);
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'ลบช่างไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Toggle Status directly from card (AVAILABLE -> BUSY -> INACTIVE -> AVAILABLE)
-  const handleCycleStatus = (techId: string) => {
-    setTechs((prev) =>
-      prev.map((t) => {
-        if (t.id !== techId) return t;
-        let nextStatus: TechStatus = 'AVAILABLE';
-        if (t.status === 'AVAILABLE') nextStatus = 'BUSY';
-        else if (t.status === 'BUSY') nextStatus = 'INACTIVE';
-        else nextStatus = 'AVAILABLE';
+  // Toggle Status directly from card (AVAILABLE -> BUSY -> INACTIVE -> AVAILABLE) — บันทึกลงฐานข้อมูลจริง
+  const handleCycleStatus = async (techId: string) => {
+    const tech = techs.find((t) => t.id === techId);
+    if (!tech || isDemo) return;
+    const nextStatus: TechStatus =
+      tech.status === 'AVAILABLE' ? 'BUSY' : tech.status === 'BUSY' ? 'INACTIVE' : 'AVAILABLE';
 
-        showToast(`สลับสถานะของ "${t.name}" เป็น "${TECH_STATUS_CONFIG[nextStatus].label}"`);
-        return { ...t, status: nextStatus };
-      })
-    );
+    // เปลี่ยนบนจอทันที ถ้าบันทึกไม่ผ่านค่อยย้อนกลับ
+    setTechs((prev) => prev.map((t) => (t.id === techId ? { ...t, status: nextStatus } : t)));
+    try {
+      await updateProjectTechnicianApi(project.id, techId, { status: nextStatus });
+      showToast(`สลับสถานะของ "${tech.name}" เป็น "${TECH_STATUS_CONFIG[nextStatus].label}"`);
+    } catch (err) {
+      setTechs((prev) => prev.map((t) => (t.id === techId ? { ...t, status: tech.status } : t)));
+      showToast(getApiErrorMessage(err, 'เปลี่ยนสถานะไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    }
   };
 
   // Simulate Line Dispatch Notification (ข้อ 6)
@@ -973,10 +1038,11 @@ export function TechniciansTab({ project }: Props) {
                 <button
                   type="button"
                   onClick={handleAddTech}
+                  disabled={saving}
                   className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/25"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>เพิ่มช่างเข้าสู่ระบบ</span>
+                  <span>{saving ? 'กำลังบันทึก...' : 'เพิ่มช่างเข้าสู่ระบบ'}</span>
                 </button>
               </div>
             </div>
@@ -1170,10 +1236,11 @@ export function TechniciansTab({ project }: Props) {
               <button
                 type="button"
                 onClick={handleSaveEdit}
+                  disabled={saving}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-orange-500/25"
               >
                 <Check className="w-4 h-4" />
-                <span>บันทึกการเปลี่ยนแปลง</span>
+                <span>{saving ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}</span>
               </button>
             </div>
           </div>
@@ -1206,9 +1273,10 @@ export function TechniciansTab({ project }: Props) {
               <button
                 type="button"
                 onClick={handleConfirmDelete}
+                disabled={saving}
                 className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold cursor-pointer transition-colors"
               >
-                ลบข้อมูล
+                {saving ? 'กำลังลบ...' : 'ลบข้อมูล'}
               </button>
             </div>
           </div>
