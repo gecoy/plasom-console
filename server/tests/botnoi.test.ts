@@ -392,3 +392,17 @@ test("handleBotnoiEvent: ข้อความบอทที่ไม่มี 
     restore();
   }
 });
+
+test("parseBotnoiEvent: ข้อความบอทที่ใช้ mid เดียวกับข้อความลูกค้า ต้องได้ key ไม่ชนกัน", () => {
+  const cust = parseBotnoiEvent(incoming("Hi") as any);
+  const bot = parseBotnoiEvent({
+    event_type: "msg_out",
+    sender: { sender_type: "bot" },
+    messages: [
+      { mid: "m-1", type: "text", text: "สวัสดีครับ" },
+      { mid: "m-1", type: "text", text: "แจ้งซ่อมอะไรดีครับ" },
+    ],
+  } as any);
+  assert.equal(cust[0].mid, "m-1");
+  assert.deepEqual(bot.map((m) => m.mid), ["m-1:out:0", "m-1:out:1"]);
+});

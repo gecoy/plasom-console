@@ -161,9 +161,13 @@ export function parseBotnoiEvent(event: BotnoiEvent, now = new Date()): ParsedCh
     return [];
   }
 
+  // Botnoi ใช้ mid เดียวกับข้อความลูกค้าที่บอทตอบกลับ จึงต้องแยก key ของข้อความขาออก ไม่ให้ชนกันตอนกันบันทึกซ้ำ
+  const outgoing = sender !== MessageSender.CUSTOMER;
   return items
-    .map((m) => ({
-      mid: m.mid ? String(m.mid).slice(0, 200) : null,
+    .map((m, index) => ({
+      mid: m.mid
+        ? (outgoing ? `${String(m.mid)}:out:${index}` : String(m.mid)).slice(0, 200)
+        : null,
       text: messageText(m).slice(0, 4000),
       sender,
       sentAt:
