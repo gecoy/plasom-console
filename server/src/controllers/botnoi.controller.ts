@@ -83,6 +83,8 @@ async function logEventShape(event: BotnoiEvent, outcome: string): Promise<void>
   try {
     const shape = describeShape(event) as object;
     console.log("[botnoi-event]", outcome, JSON.stringify(shape));
+    // จดลงฐานข้อมูลเฉพาะ event ที่ถูกข้าม (ไว้ตรวจรูปแบบผิดปกติ) ไม่เพิ่มงานให้ทุกข้อความแชท
+    if (outcome.startsWith("stored")) return;
     await prisma.botnoiEventLog.create({ data: { outcome, shape } });
     await prisma.botnoiEventLog.deleteMany({
       where: { createdAt: { lt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) } },

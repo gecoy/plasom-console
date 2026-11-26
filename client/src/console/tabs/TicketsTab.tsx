@@ -1,4 +1,4 @@
-import { useState, useTransition, useRef, useEffect } from 'react';
+import { useCallback, useState, useTransition, useRef, useEffect } from 'react';
 import {
   Search,
   FileSpreadsheet,
@@ -57,6 +57,7 @@ import {
   fetchProjectTechniciansApi,
   createManualTicketInDb,
   updateProjectTicketApi,
+  getApiErrorMessage,
   mapBackendStatusToUi,
   mapUiStatusToBackend,
   readCachedTickets,
@@ -727,32 +728,36 @@ export function TicketsTab({ project }: Props) {
           .map((tc: any) => mapRawTechToItem(tc, project.id))
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadLiveTicketsAndTechs() {
-      if (project.id.startsWith('proj-')) return;
-      try {
-        const [rawTickets, rawTechs] = await Promise.all([
-          fetchProjectTicketsApi(project.id),
-          fetchProjectTechniciansApi(project.id),
-        ]);
-        if (cancelled) return;
-        // ช่างที่พักงาน (INACTIVE) ไม่ให้เลือกมอบหมายงาน
-        setDbTechs(
-          rawTechs
-            .filter((tc: any) => tc.status !== 'INACTIVE')
-            .map((tc: any) => mapRawTechToItem(tc, project.id))
-        );
-        setTickets(rawTickets.map((t: any) => mapRawTicketToExtended(t, project.id)));
-      } catch {
-        // fallback
-      }
+  // โหลดใบงาน + ช่างจากฐานข้อมูลจริง (ใช้ตอนเปิดหน้า และตอนบันทึกไม่สำเร็จเพื่อย้อนข้อมูลบนจอให้ตรงกับระบบ)
+  const liveLoadId = useRef(0);
+  const reloadTicketsFromServer = useCallback(async () => {
+    if (project.id.startsWith('proj-')) return;
+    const myLoad = ++liveLoadId.current;
+    try {
+      const [rawTickets, rawTechs] = await Promise.all([
+        fetchProjectTicketsApi(project.id),
+        fetchProjectTechniciansApi(project.id),
+      ]);
+      if (myLoad !== liveLoadId.current) return;
+      // ช่างที่พักงาน (INACTIVE) ไม่ให้เลือกมอบหมายงาน
+      setDbTechs(
+        rawTechs
+          .filter((tc: any) => tc.status !== 'INACTIVE')
+          .map((tc: any) => mapRawTechToItem(tc, project.id))
+      );
+      setTickets(rawTickets.map((t: any) => mapRawTicketToExtended(t, project.id)));
+    } catch {
+      // fallback: ใช้ข้อมูลจาก cache ต่อไป
     }
-    loadLiveTicketsAndTechs();
-    return () => {
-      cancelled = true;
-    };
   }, [project.id]);
+
+  useEffect(() => {
+    const loads = liveLoadId;
+    reloadTicketsFromServer();
+    return () => {
+      loads.current++; // ออกจากหน้าแล้ว ทิ้งผลที่มาทีหลัง
+    };
+  }, [reloadTicketsFromServer]);
 
 
   // View Switcher (ตารางใบงาน, ปฏิทินงาน, แดชบอร์ดสถิติ)
@@ -839,6 +844,27 @@ export function TicketsTab({ project }: Props) {
     setTimeout(() => {
       setToast(null);
     }, 3200);
+  };
+
+  // บันทึกลงระบบไม่สำเร็จ: แจ้งผู้ใช้ แล้วโหลดข้อมูลจริงกลับมาแทนที่สิ่งที่เปลี่ยนบนจอไปก่อนหน้า
+  const handleSyncError = (err: unknown) => {
+    showToast(getApiErrorMessage(err, 'บันทึกลงระบบไม่สำเร็จ ข้อมูลถูกโหลดใหม่จากระบบแล้ว'), 'error');
+    reloadTicketsFromServer();
+  };
+
+  /** อัปเดตหลายใบงานพร้อมกัน รายงานจำนวนที่บันทึกไม่ผ่าน */
+  const syncManyTickets = async (
+    items: { id: string; payload: Record<string, unknown> }[]
+  ) => {
+    if (project.id.startsWith('proj-') || items.length === 0) return;
+    const results = await Promise.allSettled(
+      items.map((it) => updateProjectTicketApi(project.id, it.id, it.payload))
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed > 0) {
+      showToast(`บันทึกไม่สำเร็จ ${failed} จาก ${items.length} รายการ ข้อมูลถูกโหลดใหม่จากระบบแล้ว`, 'error');
+      reloadTicketsFromServer();
+    }
   };
 
   const projectTickets = tickets.filter((t) => t.projectId === project.id);
@@ -980,7 +1006,8 @@ export function TicketsTab({ project }: Props) {
         status: 'RECEIVED',
         technicianId: matchedTech?.id || null,
         note: assignTimeSlot,
-      }).catch(() => {});
+        ...(assignDate ? { preferredDate: assignDate } : {}),
+      }).catch(handleSyncError);
     }
 
     const conflictCount = getTechJobCountOnDate(assignTechName, assignDate, assigningTicket.id);
@@ -1046,7 +1073,7 @@ export function TicketsTab({ project }: Props) {
     if (!project.id.startsWith('proj-')) {
       updateProjectTicketApi(project.id, ticketId, {
         status: mapUiStatusToBackend(newStatus),
-      }).catch(() => {});
+      }).catch(handleSyncError);
     }
 
     startTransition(() => {
@@ -1069,7 +1096,7 @@ export function TicketsTab({ project }: Props) {
       updateProjectTicketApi(project.id, closingTicket.id, {
         status: 'COMPLETED',
         note: `${closingNotes} (ยอด ${closingCost} บาท)`,
-      }).catch(() => {});
+      }).catch(handleSyncError);
     }
 
     setTickets((prev) =>
@@ -1742,6 +1769,18 @@ export function TicketsTab({ project }: Props) {
               onChange={(e) => {
                 const targetTech = e.target.value;
                 if (!targetTech) return;
+                const matched = projectTechs.find((tc) => tc.name === targetTech);
+                syncManyTickets(
+                  tickets
+                    .filter((t) => selectedIds.includes(t.id))
+                    .map((t) => ({
+                      id: t.id,
+                      payload: {
+                        technicianId: matched?.id || null,
+                        ...(t.status === 'PENDING' ? { status: 'RECEIVED' } : {}),
+                      },
+                    }))
+                );
                 setTickets((prev) =>
                   prev.map((t) =>
                     selectedIds.includes(t.id)
@@ -1768,6 +1807,12 @@ export function TicketsTab({ project }: Props) {
             <button
               type="button"
               onClick={() => {
+                // ปิดงานผ่านระบบจริง (ใบงานจาก LINE จะได้รับปุ่มให้ดาวอัตโนมัติ)
+                syncManyTickets(
+                  tickets
+                    .filter((t) => selectedIds.includes(t.id) && t.status !== 'COMPLETED')
+                    .map((t) => ({ id: t.id, payload: { status: 'COMPLETED' } }))
+                );
                 setTickets((prev) =>
                   prev.map((t) => (selectedIds.includes(t.id) ? { ...t, status: 'COMPLETED' } : t))
                 );
@@ -1782,6 +1827,11 @@ export function TicketsTab({ project }: Props) {
             <button
               type="button"
               onClick={() => {
+                syncManyTickets(
+                  tickets
+                    .filter((t) => selectedIds.includes(t.id) && t.status !== 'CANCELLED')
+                    .map((t) => ({ id: t.id, payload: { status: 'CANCELLED' } }))
+                );
                 setTickets((prev) =>
                   prev.map((t) => (selectedIds.includes(t.id) ? { ...t, status: 'CANCELLED' } : t))
                 );

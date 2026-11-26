@@ -539,7 +539,14 @@ async function handleBotnoiTicket(
       ticket: botTicketCode,
       extra_fields: rawExtraFields,
     } = req.body || {};
-    const extraFields = ticketExtraFieldsSchema.parse(rawExtraFields ?? {});
+    // Botnoi แทนตัวแปรที่ไม่มีค่าด้วย "" — extra_fields ที่ไม่ใช่ object หรือผิดรูปแบบ ไม่ควรทำให้เปิดใบงานไม่ได้
+    // (ถ้าตอบ 4xx บอทจะเงียบ ลูกค้าไม่ได้รับรหัสใบงาน)
+    const extraParsed = ticketExtraFieldsSchema.safeParse(
+      rawExtraFields && typeof rawExtraFields === "object" && !Array.isArray(rawExtraFields)
+        ? rawExtraFields
+        : {}
+    );
+    const extraFields = extraParsed.success ? extraParsed.data : {};
 
     const isPlaceholder = (val: unknown) =>
       !val || String(val).includes("<") || String(val).includes(">");

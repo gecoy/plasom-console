@@ -618,3 +618,53 @@ test("linkBotnoiChatToTicket: ไม่เจอเบอร์ในแชท �
     restore();
   }
 });
+
+test("Botnoi webhook เปิดใบงาน: extra_fields เป็นข้อความว่าง (ตัวแปรไม่มีค่า) ยังเปิดใบงานได้", async () => {
+  const { createProjectTicketFromBotnoi } = await import("../src/controllers/ticket.controller");
+  const { createHash } = await import("crypto");
+  const secret = "s3cret-for-test";
+  let createdData: any;
+  const restore = stubPrisma({
+    project: {
+      findUnique: async () => ({ id: "p1", webhookSecretHash: createHash("sha256").update(secret).digest("hex") }),
+    },
+    ticket: { findUnique: async () => null, findFirst: async () => null },
+    botnoiChatEvent: { findMany: async () => [] },
+    message: { findMany: async () => [] },
+    $transaction: async (callback: any) =>
+      callback({
+        ticket: {
+          create: async ({ data }: any) => {
+            createdData = data;
+            return { id: "t1", ...data };
+          },
+        },
+        statusLog: { create: async () => ({}) },
+      }),
+  });
+  try {
+    const res = mockRes();
+    const next = nextSpy();
+    await createProjectTicketFromBotnoi(
+      {
+        params: { projectId: "p1" },
+        header: (k: string) => (k.toLowerCase() === "x-webhook-secret" ? secret : undefined),
+        body: {
+          customer_name: "ทดสอบ",
+          phone: "0812345678",
+          info: "แอร์ | ไม่เย็น | บ้าน",
+          date: "",
+          ticket: "",
+          extra_fields: "",
+        },
+      } as any,
+      res,
+      next as any
+    );
+    assert.deepEqual(next.calls, []);
+    assert.equal(res.body?.success, true);
+    assert.deepEqual(createdData.extraFields, {});
+  } finally {
+    restore();
+  }
+});
