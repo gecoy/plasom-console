@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  describeShape,
   handleBotnoiEvent,
   parseBotnoiEvent,
   parseReviewPostback,
@@ -57,6 +58,13 @@ test("parseBotnoiEvent: แยกข้อความลูกค้าแล�
   assert.equal(agent[0].sender, "STAFF");
 
   assert.equal(parseBotnoiEvent({ event_type: "dialogue" } as any).length, 0);
+
+  // ไม่มี event_type แต่ sender เป็น bot -> นับเป็นข้อความบอท
+  const noType = parseBotnoiEvent({
+    sender: { sender_type: "bot" },
+    messages: [{ type: "text", text: "รับเรื่องแล้วครับ" }],
+  } as any);
+  assert.equal(noType[0]?.sender, "BOT");
 });
 
 test("parseReviewPostback / parseTypedRating", () => {
@@ -88,7 +96,12 @@ test("handleBotnoiEvent: token ผิดได้ 401", async () => {
 });
 
 test("handleBotnoiEvent: bot ที่ไม่รู้จัก ตอบ 200 แบบ ignored", async () => {
-  const restore = stubPrisma({ project: { findFirst: async () => null } });
+  const restore = stubPrisma({
+    project: { findFirst: async () => null },
+    ticket: { findFirst: async () => null },
+    botnoiChatEvent: { findFirst: async () => null },
+    botnoiEventLog: { create: async () => ({}), deleteMany: async () => ({ count: 0 }) },
+  });
   try {
     const res = mockRes();
     await handleBotnoiEvent(
@@ -320,5 +333,62 @@ test("requestReviewForTicket: ส่ง quick reply เข้าห้องแ�
     restore();
     globalThis.fetch = originalFetch;
     delete process.env.BOTNOI_CHANNEL_ACCESS_TOKEN;
+  }
+});
+
+test("describeShape: เก็บแค่โครงสร้าง ไม่เก็บข้อความหรือเบอร์ลูกค้า", () => {
+  const shape = describeShape({
+    event_type: "msg_out",
+    chat_room_source: { source_id: "U-secret", source_channel: "line_modular" },
+    messages: [{ type: "text", text: "เบอร์ 0812345678" }],
+  }) as any;
+  assert.equal(shape.event_type, "msg_out");
+  assert.equal(shape.chat_room_source.source_channel, "line_modular");
+  assert.equal(shape.chat_room_source.source_id, "string(8)");
+  assert.equal(shape.messages[0], "array(1)");
+  assert.equal(shape.messages[1].type, "text");
+  assert.match(shape.messages[1].text, /^string\(\d+\)$/);
+  assert.ok(!JSON.stringify(shape).includes("0812345678"));
+});
+
+test("handleBotnoiEvent: ข้อความบอทที่ไม่มี bot_id -> หาร้านจากห้องแชทที่ผูกใบงานไว้", async () => {
+  let saved: any;
+  const restore = stubPrisma({
+    project: { findFirst: async () => null },
+    ticket: {
+      findFirst: async (args: any) =>
+        args.select?.project
+          ? { project: { id: "p1", botnoiBotId: "bot-1" } }
+          : { id: "t1", status: "SUBMITTED", updatedAt: new Date() },
+    },
+    message: {
+      createMany: async (args: any) => {
+        saved = args;
+        return { count: 1 };
+      },
+    },
+    botnoiEventLog: { create: async () => ({}), deleteMany: async () => ({ count: 0 }) },
+  });
+  try {
+    const res = mockRes();
+    await handleBotnoiEvent(
+      {
+        query: { token: "test-event-token" },
+        header: () => undefined,
+        body: {
+          event_type: "msg_out",
+          chat_room_source: { source_id: "U-cust", source_type: "user", source_channel: "line_modular" },
+          sender: { sender_type: "bot" },
+          messages: { type: "text", text: "รับเรื่องแล้วครับ" },
+        },
+      } as any,
+      res,
+      nextSpy() as any
+    );
+    assert.equal(res.body.stored, "ticket");
+    assert.equal(saved.data[0].sender, "BOT");
+    assert.equal(saved.data[0].text, "รับเรื่องแล้วครับ");
+  } finally {
+    restore();
   }
 });

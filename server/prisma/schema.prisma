@@ -224,3 +224,15 @@ model BotnoiChatEvent {
   @@index([projectId, sentAt])
   @@index([projectId, sourceId, sentAt])
 }
+
+// ===========================
+// โครงสร้าง event จาก Botnoi (ไม่มีข้อความจริง) ไว้ตรวจรูปแบบ เก็บ 3 วัน
+// ===========================
+model BotnoiEventLog {
+  id        String   @id @default(cuid())
+  outcome   String
+  shape     Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

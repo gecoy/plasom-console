@@ -23,18 +23,67 @@ type BotnoiMessageObject = {
   postback?: { data?: string };
 };
 
+type BotnoiSourceObject = {
+  source_id?: string;
+  source_type?: string;
+  source_channel?: string;
+};
+
 type BotnoiEvent = {
   event_type?: string;
+  [extra: string]: unknown;
   bot_id?: string;
-  chat_room_source?: {
-    source_id?: string;
-    source_type?: string;
-    source_channel?: string;
-  };
+  chat_room_source?: BotnoiSourceObject;
+  source?: BotnoiSourceObject; // บางช่องทาง (เช่น line_modular) อาจส่งเป็น source แทน
   sender?: { sender_type?: string; display_name?: string };
-  message?: BotnoiMessageObject;
-  messages?: BotnoiMessageObject[];
+  message?: BotnoiMessageObject | BotnoiMessageObject[] | string;
+  messages?: BotnoiMessageObject[] | BotnoiMessageObject | string;
 };
+
+const OUTGOING_EVENT_TYPES = new Set(["msg_out", "message_out", "bot_reply", "outgoing_msg"]);
+
+function isOutgoing(event: BotnoiEvent): boolean {
+  if (event.event_type && OUTGOING_EVENT_TYPES.has(event.event_type)) return true;
+  const st = event.sender?.sender_type;
+  return !event.event_type && (st === "bot" || st === "agent");
+}
+
+const SHAPE_VALUE_KEYS = new Set(["event_type", "sender_type", "source_type", "source_channel", "type"]);
+
+/** โครงสร้าง JSON แบบไม่มีค่าจริง (เก็บค่าเฉพาะฟิลด์ประเภท เช่น event_type) กันข้อมูลลูกค้ารั่ว */
+export function describeShape(value: unknown, key = "", depth = 0): unknown {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    if (depth >= 5) return `array(${value.length})`;
+    return [`array(${value.length})`, ...value.slice(0, 3).map((v) => describeShape(v, key, depth + 1))];
+  }
+  if (typeof value === "object") {
+    if (depth >= 5) return "object";
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>).slice(0, 40)) {
+      out[k] = describeShape(v, k, depth + 1);
+    }
+    return out;
+  }
+  if (typeof value === "string") {
+    return SHAPE_VALUE_KEYS.has(key) ? value.slice(0, 40) : `string(${value.length})`;
+  }
+  return typeof value;
+}
+
+/** จดโครงสร้าง event ลงฐานข้อมูล (ไว้ตรวจรูปแบบ event จริงของ Botnoi) ไม่ให้ล้มการทำงานหลัก */
+async function logEventShape(event: BotnoiEvent, outcome: string): Promise<void> {
+  try {
+    const shape = describeShape(event) as object;
+    console.log("[botnoi-event]", outcome, JSON.stringify(shape));
+    await prisma.botnoiEventLog.create({ data: { outcome, shape } });
+    await prisma.botnoiEventLog.deleteMany({
+      where: { createdAt: { lt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000) } },
+    });
+  } catch (err) {
+    console.error("⚠️ [Botnoi] จด log event ไม่สำเร็จ:", (err as Error).message);
+  }
+}
 
 export type ParsedChatMessage = {
   mid: string | null;
@@ -91,16 +140,23 @@ function messageText(m: BotnoiMessageObject): string {
   return NON_TEXT_LABELS[m.type ?? ""] ?? `[ข้อความประเภท ${m.type ?? "ไม่ทราบ"}]`;
 }
 
+function toItems(raw: unknown): BotnoiMessageObject[] {
+  if (Array.isArray(raw)) return raw.filter((m) => m && typeof m === "object");
+  if (raw && typeof raw === "object") return [raw as BotnoiMessageObject];
+  if (typeof raw === "string" && raw.trim()) return [{ type: "text", text: raw }];
+  return [];
+}
+
 export function parseBotnoiEvent(event: BotnoiEvent, now = new Date()): ParsedChatMessage[] {
   let sender: MessageSender;
   let items: BotnoiMessageObject[];
 
   if (event.event_type === "incoming_msg") {
     sender = MessageSender.CUSTOMER;
-    items = event.message ? [event.message] : [];
-  } else if (event.event_type === "msg_out") {
+    items = toItems(event.message ?? event.messages);
+  } else if (isOutgoing(event)) {
     sender = event.sender?.sender_type === "agent" ? MessageSender.STAFF : MessageSender.BOT;
-    items = Array.isArray(event.messages) ? event.messages : event.message ? [event.message] : [];
+    items = toItems(event.messages ?? event.message);
   } else {
     return [];
   }
@@ -162,27 +218,50 @@ export async function handleBotnoiEvent(
 
     const event = (req.body ?? {}) as BotnoiEvent;
     const botId = event.bot_id;
-    const sourceId = event.chat_room_source?.source_id;
-    const channel = event.chat_room_source?.source_channel || "line";
-    const sourceType = event.chat_room_source?.source_type || "user";
+    const source = event.chat_room_source ?? event.source;
+    const sourceId = source?.source_id;
+    const channel = source?.source_channel || "line";
+    const sourceType = source?.source_type || "user";
 
     // ตอบ 200 กับ event ที่ไม่เกี่ยวข้อง เพื่อไม่ให้ Botnoi มองว่าส่งไม่สำเร็จ
-    if (!botId || !sourceId || sourceType !== "user") {
+    if (!sourceId || sourceType !== "user") {
+      await logEventShape(event, "unsupported_source");
       res.json({ success: true, ignored: "unsupported_source" });
       return;
     }
 
     const messages = parseBotnoiEvent(event);
     if (messages.length === 0) {
+      await logEventShape(event, "no_messages");
       res.json({ success: true, ignored: "no_messages" });
       return;
     }
 
-    const project = await prisma.project.findFirst({
-      where: { botnoiBotId: botId },
-      select: { id: true },
-    });
+    // หาร้านจาก bot_id ก่อน ถ้า event ไม่มี bot_id (เช่นข้อความขาออกบางช่องทาง) ให้หาจากห้องแชทที่เคยผูกไว้
+    let project: { id: string } | null = botId
+      ? await prisma.project.findFirst({ where: { botnoiBotId: botId }, select: { id: true } })
+      : null;
+    let resolvedBotId = botId;
     if (!project) {
+      const known =
+        (await prisma.ticket.findFirst({
+          where: { botnoiSourceId: sourceId },
+          select: { project: { select: { id: true, botnoiBotId: true } } },
+          orderBy: { createdAt: "desc" },
+        }))?.project ??
+        (await prisma.botnoiChatEvent.findFirst({
+          where: { sourceId },
+          select: { project: { select: { id: true, botnoiBotId: true } } },
+          orderBy: { sentAt: "desc" },
+        }))?.project ??
+        null;
+      if (known && (!botId || known.botnoiBotId === botId)) {
+        project = { id: known.id };
+        resolvedBotId = known.botnoiBotId ?? botId;
+      }
+    }
+    if (!project) {
+      await logEventShape(event, "unknown_bot");
       res.json({ success: true, ignored: "unknown_bot" });
       return;
     }
@@ -207,7 +286,7 @@ export async function handleBotnoiEvent(
         });
         if (ticket) {
           reviewSaved = await saveReview(projectId, ticket, fromButton.rating, {
-            botId,
+            botId: resolvedBotId ?? "",
             sourceId,
             channel,
           });
@@ -225,7 +304,7 @@ export async function handleBotnoiEvent(
           orderBy: { reviewRequestedAt: "desc" },
         });
         if (ticket) {
-          reviewSaved = await saveReview(projectId, ticket, typed, { botId, sourceId, channel });
+          reviewSaved = await saveReview(projectId, ticket, typed, { botId: resolvedBotId ?? "", sourceId, channel });
         }
       }
     }
@@ -274,6 +353,7 @@ export async function handleBotnoiEvent(
       });
     }
 
+    await logEventShape(event, attachTo ? "stored_ticket" : "stored_buffer");
     res.json({
       success: true,
       stored: attachTo ? "ticket" : "buffer",
