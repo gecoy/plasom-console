@@ -18,15 +18,19 @@ export function CreateProjectWizardPage() {
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   const [name, setName] = useState('');
-  const [branchName, setBranchName] = useState('สำนักงานใหญ่');
+  const [branchName, setBranchName] = useState('');
   const [category, setCategory] = useState('งานแอร์และเครื่องทำความเย็น');
-  const [fieldsText, setFieldsText] = useState(
-    CATEGORY_PRESETS['งานแอร์และเครื่องทำความเย็น'].join(', ')
+  const [requiredFields, setRequiredFields] = useState<string[]>(
+    CATEGORY_PRESETS['งานแอร์และเครื่องทำความเย็น']
   );
+  const [newField, setNewField] = useState('');
+  const [nameError, setNameError] = useState('');
+  const [branchError, setBranchError] = useState('');
 
-  const [botMode, setBotMode] = useState<'AUTO' | 'EXISTING'>('AUTO');
+  const [botMode, setBotMode] = useState<'LATER' | 'EXISTING'>('LATER');
   const [botnoiBotId, setBotnoiBotId] = useState('');
   const [voiceAgentId, setVoiceAgentId] = useState('');
+  const [botConnectionError, setBotConnectionError] = useState('');
   const [greetingMessage, setGreetingMessage] = useState(
     'สวัสดีค่ะ ยินดีให้บริการ แจ้งรายละเอียดอาการเสียและวันนัดหมายได้เลยนะคะ'
   );
@@ -45,57 +49,85 @@ export function CreateProjectWizardPage() {
     projectId: string;
     webhookUrl: string;
     webhookSecret: string;
+    systemPrompt: string;
   } | null>(null);
-  const [copiedKey, setCopiedKey] = useState<'url' | 'secret' | null>(null);
+  const [copiedKey, setCopiedKey] = useState<'url' | 'secret' | 'prompt' | null>(null);
+  const [copyError, setCopyError] = useState('');
 
   const handleCategoryChange = (newCategory: string) => {
     setCategory(newCategory);
     if (CATEGORY_PRESETS[newCategory]) {
-      setFieldsText(CATEGORY_PRESETS[newCategory].join(', '));
+      setRequiredFields(CATEGORY_PRESETS[newCategory]);
     }
+  };
+
+  const addRequiredField = () => {
+    const field = newField.trim();
+    if (!field) return;
+    setRequiredFields((prev) => (prev.includes(field) ? prev : [...prev, field]));
+    setNewField('');
+  };
+
+  const handleProceedToBotSettings = () => {
+    const nextNameError = name.trim().length < 2 ? 'กรุณากรอกชื่อร้านอย่างน้อย 2 ตัวอักษร' : '';
+    const nextBranchError =
+      branchName.trim().length < 2 ? 'กรุณากรอกชื่อสาขาอย่างน้อย 2 ตัวอักษร' : '';
+    setNameError(nextNameError);
+    setBranchError(nextBranchError);
+    if (nextNameError || nextBranchError) return;
+    setStep(2);
   };
 
   const toggleFeature = (key: keyof BotFeatures) => {
     setFeatures((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const handleCopy = async (text: string, key: 'url' | 'secret') => {
+  const handleCopy = async (text: string, key: 'url' | 'secret' | 'prompt') => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedKey(key);
+      setCopyError('');
       setTimeout(() => setCopiedKey(null), 2000);
     } catch {
-      // fallback ignored
+      setCopyError('คัดลอกไม่สำเร็จ กรุณาเลือกข้อความแล้วคัดลอกด้วยตนเอง');
     }
   };
 
   const handleCreateFinish = async () => {
+    const finalName = name.trim();
+    const finalBranch = branchName.trim();
+    const nextNameError = finalName.length < 2 ? 'กรุณากรอกชื่อร้านอย่างน้อย 2 ตัวอักษร' : '';
+    const nextBranchError =
+      finalBranch.length < 2 ? 'กรุณากรอกชื่อสาขาอย่างน้อย 2 ตัวอักษร' : '';
+    setNameError(nextNameError);
+    setBranchError(nextBranchError);
+    if (nextNameError || nextBranchError) {
+      setStep(1);
+      return;
+    }
+
+    const finalBotId = botMode === 'EXISTING' ? botnoiBotId.trim() || null : null;
+    const finalVoiceId = botMode === 'EXISTING' ? voiceAgentId.trim() || null : null;
+    if (botMode === 'EXISTING' && !finalBotId && !finalVoiceId) {
+      setBotConnectionError('กรุณากรอกรหัส Chatbot ID หรือ Voicebot Agent ID จริง หรือเลือกข้ามไปผูกภายหลัง');
+      setStep(2);
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
-
-    const parsedFields = fieldsText
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const finalName = name.trim().length >= 2 ? name.trim() : 'ร้านบริการซ่อมสาขาใหม่';
-    const finalBranch = branchName.trim().length >= 1 ? branchName.trim() : 'สาขาหลัก';
-    const finalBotId =
-      botMode === 'AUTO' ? `auto-bot-${Date.now()}` : botnoiBotId.trim() || null;
-    const finalVoiceId =
-      botMode === 'AUTO' ? `auto-voice-${Date.now()}` : voiceAgentId.trim() || null;
 
     try {
       const { project, webhookUrl, webhookSecret } = await createProjectApi({
         name: finalName,
         branchName: finalBranch,
         category,
-        chatbotConnected: Boolean(finalBotId),
+        chatbotConnected: botMode === 'EXISTING' && Boolean(finalBotId),
         botnoiBotId: finalBotId,
-        voicebotConnected: Boolean(finalVoiceId),
+        voicebotConnected: botMode === 'EXISTING' && Boolean(finalVoiceId),
         voiceAgentId: finalVoiceId,
         greetingMessage,
-        requiredFields: parsedFields.length > 0 ? parsedFields : ['อาการเสีย', 'วันนัดหมาย'],
+        requiredFields,
         features,
       });
 
@@ -110,6 +142,15 @@ export function CreateProjectWizardPage() {
         projectId: project.id,
         webhookUrl: fullWebhookUrl,
         webhookSecret,
+        systemPrompt: [
+          `คุณคือผู้ช่วย AI ของร้าน "${finalName}" สาขา "${finalBranch}"`,
+          `ประเภทธุรกิจ: ${category}`,
+          `ข้อความทักทาย: ${greetingMessage.trim() || '-'}`,
+          `เมื่อลูกค้าแจ้งซ่อม ให้สอบถามข้อมูลที่จำเป็น: ${requiredFields.length ? requiredFields.join(', ') : 'ไม่มีหัวข้อบังคับเพิ่มเติม'}`,
+          'หากต้องขอเบอร์โทรศัพท์ ให้รับเฉพาะตัวเลข 10 หลักติดกัน ห้ามใส่ขีดหรือเว้นวรรค',
+          'เมื่อส่งข้อมูลผ่านพารามิเตอร์ info ให้คั่นแต่ละค่าและเรียงตามรูปแบบ: รุ่นอุปกรณ์ | อาการเสีย | ที่อยู่หน้างาน',
+          'ถามอย่างสุภาพ กระชับ และไม่ถามข้อมูลที่ลูกค้าให้ไว้แล้ว',
+        ].join('\n'),
       });
     } catch (err: any) {
       const msg =
@@ -167,10 +208,15 @@ export function CreateProjectWizardPage() {
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (e.target.value.trim().length >= 2) setNameError('');
+                  }}
                   placeholder="เช่น ร้านซ่อมมือถือ ไอฟิกซ์"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-orange-500"
+                  aria-invalid={Boolean(nameError)}
                 />
+                {nameError && <p className="text-xs text-rose-400 mt-1.5">{nameError}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1.5">
@@ -179,39 +225,104 @@ export function CreateProjectWizardPage() {
                 <input
                   type="text"
                   value={branchName}
-                  onChange={(e) => setBranchName(e.target.value)}
+                  onChange={(e) => {
+                    setBranchName(e.target.value);
+                    if (e.target.value.trim().length >= 2) setBranchError('');
+                  }}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
+                  aria-invalid={Boolean(branchError)}
                 />
+                {branchError && <p className="text-xs text-rose-400 mt-1.5">{branchError}</p>}
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                หมวดหมู่ธุรกิจงานซ่อม
+                หมวดหมู่ธุรกิจ
               </label>
-              <select
+              <input
+                type="text"
                 value={category}
-                onChange={(e) => handleCategoryChange(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
-              >
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="เช่น ร้านซ่อมเครื่องชงกาแฟ"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-orange-500"
+              />
+              <p className="text-xs text-slate-400 mt-2">
+                หมวดยอดนิยม — กดเพื่อเลือกหมวดและเติมชุดคำถามแนะนำ
+              </p>
+              <div className="flex flex-wrap gap-2 mt-2">
                 {Object.keys(CATEGORY_PRESETS).map((cat) => (
-                  <option key={cat} value={cat}>
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleCategoryChange(cat)}
+                    aria-pressed={category === cat}
+                    className={`px-3 py-1.5 rounded-full border text-xs cursor-pointer ${
+                      category === cat
+                        ? 'border-orange-500 text-orange-300 bg-orange-500/10'
+                        : 'border-slate-700 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
                     {cat}
-                  </option>
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                หัวข้อข้อมูลเฉพาะทางที่ต้องการให้ AI ถามลูกค้า (คั่นด้วยเครื่องหมายจุลภาค)
+                หัวข้อข้อมูลเฉพาะทางที่ต้องการให้ AI ถามลูกค้า
               </label>
-              <textarea
-                rows={3}
-                value={fieldsText}
-                onChange={(e) => setFieldsText(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
-              />
+              <div className="flex flex-wrap gap-2 mb-3">
+                {requiredFields.map((field, index) => (
+                  <span
+                    key={`${field}-${index}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-200 text-xs"
+                  >
+                    {field}
+                    <button
+                      type="button"
+                      onClick={() => setRequiredFields((prev) => prev.filter((_, i) => i !== index))}
+                      aria-label={`ลบหัวข้อ ${field}`}
+                      className="text-orange-200 hover:text-white cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {requiredFields.length === 0 && (
+                  <span className="text-xs text-slate-500">ยังไม่มีหัวข้อคำถาม</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newField}
+                  onChange={(e) => setNewField(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addRequiredField();
+                    }
+                  }}
+                  placeholder="พิมพ์หัวข้อใหม่แล้วกด Enter"
+                  className="min-w-0 flex-1 px-3.5 py-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-orange-500"
+                />
+                <button
+                  type="button"
+                  onClick={addRequiredField}
+                  className="px-4 rounded-xl bg-slate-800 text-sm text-slate-100 hover:bg-slate-700 cursor-pointer"
+                >
+                  เพิ่ม
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRequiredFields(CATEGORY_PRESETS[category] || [])}
+                  className="px-3 rounded-xl border border-slate-700 text-xs text-slate-300 hover:border-slate-500 cursor-pointer"
+                >
+                  เติมค่าเริ่มต้นตามหมวด
+                </button>
+              </div>
               <p className="text-xs text-slate-400 mt-1.5">
                 ข้อมูลส่วนนี้จะถูกเก็บแบบยืดหยุ่น (JSON / Free Text) ทำให้รองรับงานซ่อมได้ทุกประเภทโดยไม่ต้องแก้ฐานข้อมูล
               </p>
@@ -220,7 +331,7 @@ export function CreateProjectWizardPage() {
             <div className="pt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={handleProceedToBotSettings}
                 className="px-6 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 cursor-pointer"
               >
                 ถัดไป: ตั้งค่าบอท AI
@@ -236,30 +347,36 @@ export function CreateProjectWizardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setBotMode('AUTO')}
-                className={`p-4 rounded-xl border text-left cursor-pointer ${
-                  botMode === 'AUTO'
-                    ? 'border-orange-500 bg-orange-500/10'
-                    : 'border-slate-700 bg-[#0b0f19]'
-                }`}
-              >
-                <div className="font-semibold text-sm text-white">สร้างบอทอัตโนมัติจากเทมเพลต</div>
-                <div className="text-xs text-slate-400 mt-1">
-                  ระบบสร้าง Prompt งานซ่อมตามหมวดธุรกิจให้ทันที
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setBotMode('EXISTING')}
+                onClick={() => {
+                  setBotMode('EXISTING');
+                  setBotConnectionError('');
+                }}
                 className={`p-4 rounded-xl border text-left cursor-pointer ${
                   botMode === 'EXISTING'
                     ? 'border-orange-500 bg-orange-500/10'
                     : 'border-slate-700 bg-[#0b0f19]'
                 }`}
               >
-                <div className="font-semibold text-sm text-white">เชื่อมบอทที่มีอยู่แล้ว (Bot ID)</div>
+                <div className="font-semibold text-sm text-white">ผูกรหัสบอทจริงตอนนี้</div>
                 <div className="text-xs text-slate-400 mt-1">
                   นำรหัสจากแพลตฟอร์ม Botnoi มาผูกเข้ากับโปรเจกต์นี้
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBotMode('LATER');
+                  setBotConnectionError('');
+                }}
+                className={`p-4 rounded-xl border text-left cursor-pointer ${
+                  botMode === 'LATER'
+                    ? 'border-orange-500 bg-orange-500/10'
+                    : 'border-slate-700 bg-[#0b0f19]'
+                }`}
+              >
+                <div className="font-semibold text-sm text-white">ข้ามไปผูกบอทภายหลัง</div>
+                <div className="text-xs text-slate-400 mt-1">
+                  บันทึกโดยไม่สร้างรหัสบอทปลอม สามารถเพิ่มรหัสจริงภายหลังได้
                 </div>
               </button>
             </div>
@@ -273,7 +390,10 @@ export function CreateProjectWizardPage() {
                   <input
                     type="text"
                     value={botnoiBotId}
-                    onChange={(e) => setBotnoiBotId(e.target.value)}
+                    onChange={(e) => {
+                      setBotnoiBotId(e.target.value);
+                      if (e.target.value.trim() || voiceAgentId.trim()) setBotConnectionError('');
+                    }}
                     placeholder="[ใส่รหัส Chatbot ID]"
                     className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-slate-700 text-sm text-slate-100"
                   />
@@ -285,12 +405,18 @@ export function CreateProjectWizardPage() {
                   <input
                     type="text"
                     value={voiceAgentId}
-                    onChange={(e) => setVoiceAgentId(e.target.value)}
+                    onChange={(e) => {
+                      setVoiceAgentId(e.target.value);
+                      if (e.target.value.trim() || botnoiBotId.trim()) setBotConnectionError('');
+                    }}
                     placeholder="[ใส่รหัส Voice Agent ID]"
                     className="w-full px-3 py-2 rounded-lg bg-[#111827] border border-slate-700 text-sm text-slate-100"
                   />
                 </div>
               </div>
+            )}
+            {botConnectionError && (
+              <p className="text-xs text-rose-400">{botConnectionError}</p>
             )}
 
             <div>
@@ -375,7 +501,7 @@ export function CreateProjectWizardPage() {
                   <div>
                     <span className="font-semibold text-slate-300">ชื่อโปรเจกต์: </span>
                     <span className="text-white">
-                      {name || 'ร้านบริการซ่อมสาขาใหม่'} ({branchName || 'สาขาหลัก'})
+                      {name.trim()} ({branchName.trim()})
                     </span>
                   </div>
                   <div>
@@ -423,7 +549,7 @@ export function CreateProjectWizardPage() {
                   <div>
                     <h2 className="text-xl font-bold text-white">สร้างโปรเจกต์ลงฐานข้อมูลสำเร็จ!</h2>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      คัดลอกข้อมูล Webhook ด้านล่างไว้สำหรับผูก API Object บน Botnoi Platform
+                      คัดลอกข้อมูล Webhook และแม่แบบ Prompt ด้านล่างไปตั้งค่าใน Botnoi Studio
                     </p>
                   </div>
                 </div>
@@ -462,6 +588,25 @@ export function CreateProjectWizardPage() {
                       </div>
                     </div>
                   )}
+
+                  <div>
+                    <div className="text-slate-400 mb-1 font-medium">แม่แบบ System Prompt ประจำร้าน:</div>
+                    <textarea
+                      readOnly
+                      rows={9}
+                      value={createdResult.systemPrompt}
+                      className="w-full p-3 rounded-lg bg-[#111827] border border-slate-800 font-mono text-slate-200 leading-relaxed resize-y"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(createdResult.systemPrompt, 'prompt')}
+                      className="mt-2 px-3 py-1.5 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedKey === 'prompt' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedKey === 'prompt' ? 'คัดลอกแม่แบบแล้ว' : 'คัดลอกแม่แบบ Prompt'}
+                    </button>
+                    {copyError && <p className="text-xs text-rose-400 mt-2">{copyError}</p>}
+                  </div>
                 </div>
 
                 <div className="pt-2 flex justify-end">

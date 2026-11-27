@@ -24,8 +24,13 @@ import {
   Filter,
   Award,
   TrendingUp,
+  Copy,
+  Save,
+  RefreshCw,
 } from 'lucide-react';
-import type { ProjectItem, TechnicianItem } from '../mockConsoleData';
+import type { BotFeatures, ProjectItem, TechnicianItem } from '../mockConsoleData';
+import { removeProjectFromCache, saveNewProject } from '../mockConsoleData';
+import { useAuth } from '../../context/AuthContext';
 import {
   readCachedTechnicians,
   fetchProjectTechniciansApi,
@@ -34,6 +39,7 @@ import {
   deleteProjectTechnicianApi,
   getApiErrorMessage,
   rotateWebhookSecretApi,
+  updateProjectApi,
 } from '../consoleApi';
 
 interface Props {
@@ -52,15 +58,29 @@ export interface ExtendedTechnician extends Omit<TechnicianItem, 'status'> {
   maxDailyJobs?: number;
 }
 
-const COMMON_SKILL_TAGS = [
-  'ซ่อมบอร์ดอินเวอร์เตอร์',
-  'ล้างแอร์ติดผนัง',
-  'ติดตั้ง/ย้ายจุดแอร์',
-  'เดินท่อน้ำยาและระบบไฟ',
-  'ตรวจเช็กระยะ/ช่วงล่าง',
-  'ซ่อมระบบเบรก',
-  'เปลี่ยนถ่ายน้ำมันเครื่อง',
-  'ตรวจเช็กระบบไฟฟ้า',
+const SKILL_TAGS_BY_CATEGORY: Record<string, string[]> = {
+  air: ['ล้างแอร์ติดผนัง', 'ซ่อมบอร์ดอินเวอร์เตอร์', 'เติมน้ำยาแอร์', 'ติดตั้ง/ย้ายจุดแอร์', 'เดินท่อน้ำยาและระบบไฟ'],
+  automotive: ['ตรวจเช็กระยะ/ช่วงล่าง', 'ซ่อมระบบเบรก', 'เปลี่ยนถ่ายน้ำมันเครื่อง', 'ซ่อมระบบไฟรถยนต์', 'ตรวจเช็กเครื่องยนต์'],
+  mobile: ['เปลี่ยนจอมือถือ', 'เปลี่ยนแบตเตอรี่', 'ซ่อมบอร์ดมือถือ', 'กู้ข้อมูลอุปกรณ์', 'ซ่อมคอมพิวเตอร์'],
+  furniture: ['ซ่อมโครงโซฟา', 'เปลี่ยนผ้าบุ/หนังหุ้ม', 'ซ่อมเฟอร์นิเจอร์ไม้', 'ซ่อมบานพับและรางลิ้นชัก', 'ประกอบเฟอร์นิเจอร์'],
+  general: ['ตรวจเช็กระบบไฟฟ้า', 'ซ่อมอุปกรณ์ไฟฟ้า', 'ติดตั้งอุปกรณ์', 'ตรวจหาสาเหตุอาการเสีย', 'ซ่อมบำรุงทั่วไป'],
+};
+
+function getSkillTags(category: string): string[] {
+  if (/แอร์|ทำความเย็น/i.test(category)) return SKILL_TAGS_BY_CATEGORY.air;
+  if (/รถยนต์|อู่|รถ\b/i.test(category)) return SKILL_TAGS_BY_CATEGORY.automotive;
+  if (/มือถือ|ไอที|คอมพิวเตอร์/i.test(category)) return SKILL_TAGS_BY_CATEGORY.mobile;
+  if (/เฟอร์นิเจอร์|โซฟา/i.test(category)) return SKILL_TAGS_BY_CATEGORY.furniture;
+  return SKILL_TAGS_BY_CATEGORY.general;
+}
+
+const FEATURE_OPTIONS: { key: keyof BotFeatures; label: string }[] = [
+  { key: 'createTicket', label: 'รับแจ้งซ่อมและเปิด Ticket อัตโนมัติ' },
+  { key: 'trackStatus', label: 'ตอบสถานะงานซ่อมตามรหัสใบงาน' },
+  { key: 'priceEstimate', label: 'แจ้งราคาประเมินเบื้องต้น' },
+  { key: 'faqAutoReply', label: 'ตอบคำถามพบบ่อยของร้าน (FAQ)' },
+  { key: 'collectCsat', label: 'เก็บคะแนนความพึงพอใจหลังจบงาน' },
+  { key: 'humanHandover', label: 'ส่งต่อให้แอดมินร้านเมื่อเคสซับซ้อน' },
 ];
 
 const TECH_STATUS_CONFIG: Record<
@@ -117,7 +137,23 @@ function mapApiTech(t: any, projectId: string): ExtendedTechnician {
 }
 
 export function TechniciansTab({ project }: Props) {
+  const { user } = useAuth();
   const isDemo = project.id.startsWith('proj-');
+  const [settingsProject, setSettingsProject] = useState(project);
+  const [isEditingProjectSettings, setIsEditingProjectSettings] = useState(false);
+  const [isSavingProjectSettings, setIsSavingProjectSettings] = useState(false);
+  const [projectSettingsForm, setProjectSettingsForm] = useState({
+    name: project.name,
+    branchName: project.branchName,
+    category: project.category,
+    botnoiBotId: project.botnoiBotId,
+    voiceAgentId: project.voiceAgentId,
+    greetingMessage: project.greetingMessage,
+    requiredFieldsText: project.requiredFields.join('\n'),
+    features: { ...project.features },
+  });
+  const [rotatedWebhookSecret, setRotatedWebhookSecret] = useState('');
+  const [copiedWebhookValue, setCopiedWebhookValue] = useState<'url' | 'secret' | null>(null);
   const [techs, setTechs] = useState<ExtendedTechnician[]>(() =>
     isDemo ? [] : readCachedTechnicians(project.id).map((t: any) => mapApiTech(t, project.id))
   );
@@ -171,6 +207,89 @@ export function TechniciansTab({ project }: Props) {
     }, 3200);
   };
 
+  const handleSaveProjectSettings = async () => {
+    const name = projectSettingsForm.name.trim();
+    const branchName = projectSettingsForm.branchName.trim();
+    const category = projectSettingsForm.category.trim();
+    if (!name || !branchName || !category) {
+      showToast('กรุณากรอกชื่อร้าน ชื่อสาขา และหมวดหมู่ให้ครบ', 'error');
+      return;
+    }
+    if (isDemo) {
+      showToast('ร้านตัวอย่างไม่สามารถบันทึกการตั้งค่าได้ กรุณาใช้ร้านจริง', 'info');
+      return;
+    }
+
+    setIsSavingProjectSettings(true);
+    try {
+      const botnoiBotId = projectSettingsForm.botnoiBotId.trim() || null;
+      const voiceAgentId = projectSettingsForm.voiceAgentId.trim() || null;
+      const requiredFields = projectSettingsForm.requiredFieldsText
+        .split(/[\n,]/)
+        .map((field) => field.trim())
+        .filter(Boolean);
+      const updatedProject = await updateProjectApi(project.id, {
+        name,
+        branchName,
+        category,
+        botnoiBotId,
+        chatbotConnected: Boolean(botnoiBotId),
+        voiceAgentId,
+        voicebotConnected: Boolean(voiceAgentId),
+        greetingMessage: projectSettingsForm.greetingMessage.trim(),
+        requiredFields,
+        features: projectSettingsForm.features,
+      });
+      setSettingsProject(updatedProject);
+      setProjectSettingsForm({
+        name: updatedProject.name,
+        branchName: updatedProject.branchName,
+        category: updatedProject.category,
+        botnoiBotId: updatedProject.botnoiBotId,
+        voiceAgentId: updatedProject.voiceAgentId,
+        greetingMessage: updatedProject.greetingMessage,
+        requiredFieldsText: updatedProject.requiredFields.join('\n'),
+        features: { ...updatedProject.features },
+      });
+      removeProjectFromCache(updatedProject.id, user?.id);
+      saveNewProject(updatedProject, user?.id);
+      setIsEditingProjectSettings(false);
+      showToast('บันทึกการตั้งค่าร้านและบอทแล้ว');
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'บันทึกการตั้งค่าร้านไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    } finally {
+      setIsSavingProjectSettings(false);
+    }
+  };
+
+  const handleCopyWebhookValue = async (value: string, key: 'url' | 'secret') => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedWebhookValue(key);
+      setTimeout(() => setCopiedWebhookValue(null), 2000);
+    } catch {
+      showToast('คัดลอกไม่สำเร็จ กรุณาเลือกข้อความแล้วคัดลอกด้วยตนเอง', 'error');
+    }
+  };
+
+  const handleRotateWebhookSecret = async () => {
+    if (
+      !window.confirm(
+        'ยืนยันสุ่ม Webhook Secret ใหม่หรือไม่? รหัสเดิมบน Botnoi จะใช้ไม่ได้ทันที ต้องนำรหัสใหม่ไปอัปเดตที่ Botnoi'
+      )
+    ) {
+      return;
+    }
+    try {
+      const result = await rotateWebhookSecretApi(project.id);
+      setRotatedWebhookSecret(result.webhookSecret);
+      showToast('สุ่ม Webhook Secret ใหม่แล้ว กรุณาอัปเดตรหัสนี้บน Botnoi ทันที');
+    } catch (err) {
+      showToast(getApiErrorMessage(err, 'สุ่ม Webhook Secret ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'), 'error');
+    }
+  };
+
+  const commonSkillTags = getSkillTags(settingsProject.category);
   const allProjectTechs = techs.filter((t) => t.projectId === project.id);
   const projectTechs = allProjectTechs.filter((t) => {
     const q = searchQuery.toLowerCase().trim();
@@ -728,32 +847,234 @@ export function TechniciansTab({ project }: Props) {
 
       {/* Bot Connection Settings Box (Navy Theme) */}
       <div className="bg-[#111827] p-6 rounded-2xl border border-slate-800 shadow-sm space-y-4">
-        <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-orange-400" />
-          <h3 className="font-bold text-base text-white">ข้อมูลการผูกบอทของร้านค้านี้</h3>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-orange-400" />
+            <h3 className="font-bold text-base text-white">ข้อมูลการผูกบอทของร้านค้านี้</h3>
+          </div>
+          {!isEditingProjectSettings && (
+            <button
+              type="button"
+              onClick={() => setIsEditingProjectSettings(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/25 hover:bg-orange-500/20 cursor-pointer"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+              แก้ไขการตั้งค่า
+            </button>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-          <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
-            <div className="text-xs text-slate-400 font-medium">รหัส Chatbot ID (Botnoi)</div>
-            <div className="text-sm font-mono font-semibold text-orange-400 mt-1">
-              {project.botnoiBotId || '-'}
+        {isEditingProjectSettings ? (
+          <div className="space-y-4 pt-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                { label: 'ชื่อร้าน', key: 'name', value: projectSettingsForm.name },
+                { label: 'ชื่อสาขา', key: 'branchName', value: projectSettingsForm.branchName },
+                { label: 'หมวดหมู่', key: 'category', value: projectSettingsForm.category },
+                { label: 'Chatbot ID (Botnoi)', key: 'botnoiBotId', value: projectSettingsForm.botnoiBotId },
+                { label: 'Voicebot Agent ID', key: 'voiceAgentId', value: projectSettingsForm.voiceAgentId },
+              ].map((field) => (
+                <label key={field.key} className="block text-xs text-slate-300 space-y-1">
+                  <span>{field.label}</span>
+                  <input
+                    type="text"
+                    value={field.value}
+                    onChange={(event) =>
+                      setProjectSettingsForm((prev) => ({
+                        ...prev,
+                        [field.key]: event.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2.5 rounded-lg bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
+                  />
+                </label>
+              ))}
             </div>
-          </div>
 
-          <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
-            <div className="text-xs text-slate-400 font-medium">รหัส Voicebot Agent ID</div>
-            <div className="text-sm font-mono font-semibold text-orange-400 mt-1">
-              {project.voiceAgentId || '-'}
-            </div>
-          </div>
+            <label className="block text-xs text-slate-300 space-y-1">
+              <span>ข้อความทักทาย</span>
+              <textarea
+                rows={2}
+                value={projectSettingsForm.greetingMessage}
+                onChange={(event) =>
+                  setProjectSettingsForm((prev) => ({ ...prev, greetingMessage: event.target.value }))
+                }
+                className="w-full px-3 py-2.5 rounded-lg bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
+              />
+            </label>
 
-          <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
-            <div className="text-xs text-slate-400 font-medium">ฟิลด์ข้อมูลที่บอทถามลูกค้า</div>
-            <div className="text-sm font-medium text-slate-200 mt-1 truncate" title={project.requiredFields.join(', ')}>
-              {project.requiredFields.join(', ') || '-'}
+            <label className="block text-xs text-slate-300 space-y-1">
+              <span>รายการคำถาม/ฟิลด์ที่บอทต้องเก็บ (หนึ่งหัวข้อต่อบรรทัด)</span>
+              <textarea
+                rows={4}
+                value={projectSettingsForm.requiredFieldsText}
+                onChange={(event) =>
+                  setProjectSettingsForm((prev) => ({ ...prev, requiredFieldsText: event.target.value }))
+                }
+                className="w-full px-3 py-2.5 rounded-lg bg-[#0b0f19] border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-orange-500"
+              />
+            </label>
+
+            <div>
+              <div className="text-xs font-medium text-slate-300 mb-2">ความสามารถของ AI</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {FEATURE_OPTIONS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() =>
+                      setProjectSettingsForm((prev) => ({
+                        ...prev,
+                        features: { ...prev.features, [key]: !prev.features[key] },
+                      }))
+                    }
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-[#0b0f19] border border-slate-800 text-left cursor-pointer"
+                  >
+                    <span className="text-xs text-slate-200">{label}</span>
+                    <span
+                      className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                        projectSettingsForm.features[key]
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {projectSettingsForm.features[key] ? 'เปิด' : 'ปิด'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={isSavingProjectSettings}
+                onClick={() => {
+                  setProjectSettingsForm({
+                    name: settingsProject.name,
+                    branchName: settingsProject.branchName,
+                    category: settingsProject.category,
+                    botnoiBotId: settingsProject.botnoiBotId,
+                    voiceAgentId: settingsProject.voiceAgentId,
+                    greetingMessage: settingsProject.greetingMessage,
+                    requiredFieldsText: settingsProject.requiredFields.join('\n'),
+                    features: { ...settingsProject.features },
+                  });
+                  setIsEditingProjectSettings(false);
+                }}
+                className="px-3 py-2 rounded-lg text-xs text-slate-300 hover:bg-slate-800 cursor-pointer disabled:opacity-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={isSavingProjectSettings}
+                onClick={handleSaveProjectSettings}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-orange-500 text-white hover:bg-orange-600 cursor-pointer disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {isSavingProjectSettings ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
+              </button>
             </div>
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
+                <div className="text-xs text-slate-400 font-medium">ร้าน / สาขา / หมวดหมู่</div>
+                <div className="text-sm font-semibold text-slate-100 mt-1">
+                  {settingsProject.name} ({settingsProject.branchName})
+                </div>
+                <div className="text-xs text-slate-400 mt-1">{settingsProject.category}</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
+                <div className="text-xs text-slate-400 font-medium">รหัส Chatbot ID (Botnoi)</div>
+                <div className="text-sm font-mono font-semibold text-orange-400 mt-1 break-all">
+                  {settingsProject.botnoiBotId || '-'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
+                <div className="text-xs text-slate-400 font-medium">รหัส Voicebot Agent ID</div>
+                <div className="text-sm font-mono font-semibold text-orange-400 mt-1 break-all">
+                  {settingsProject.voiceAgentId || '-'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 md:col-span-2">
+                <div className="text-xs text-slate-400 font-medium">ฟิลด์ข้อมูลที่บอทถามลูกค้า</div>
+                <div className="text-sm font-medium text-slate-200 mt-1">
+                  {settingsProject.requiredFields.join(', ') || '-'}
+                </div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800">
+                <div className="text-xs text-slate-400 font-medium">ข้อความทักทาย</div>
+                <div className="text-sm text-slate-200 mt-1">{settingsProject.greetingMessage || '-'}</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-[#0b0f19] border border-slate-800 md:col-span-3">
+                <div className="text-xs text-slate-400 font-medium mb-2">ความสามารถของ AI</div>
+                <div className="flex flex-wrap gap-2">
+                  {FEATURE_OPTIONS.map(({ key, label }) => (
+                    <span
+                      key={key}
+                      className={`px-2.5 py-1 rounded-full text-[11px] ${
+                        settingsProject.features[key]
+                          ? 'bg-emerald-500/10 text-emerald-300'
+                          : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {label}: {settingsProject.features[key] ? 'เปิด' : 'ปิด'}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="border-t border-slate-800 pt-4 space-y-3">
+          <div className="text-xs font-semibold text-slate-300">Webhook สำหรับรับใบงาน</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="min-w-0 flex-1 p-2.5 rounded-lg bg-[#0b0f19] border border-slate-800 text-xs text-orange-300 break-all">
+              {window.location.origin}/api/webhooks/{project.id}
+            </code>
+            <button
+              type="button"
+              onClick={() =>
+                handleCopyWebhookValue(`${window.location.origin}/api/webhooks/${project.id}`, 'url')
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-xs text-slate-200 hover:bg-slate-700 cursor-pointer"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              {copiedWebhookValue === 'url' ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
+            </button>
+            <button
+              type="button"
+              onClick={handleRotateWebhookSecret}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 hover:bg-rose-500/20 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              สุ่มรหัสลับ x-webhook-secret ใหม่
+            </button>
+          </div>
+          {rotatedWebhookSecret && (
+            <div className="space-y-1.5">
+              <div className="text-xs text-amber-300">
+                รหัสใหม่แสดงครั้งนี้เท่านั้น ให้นำไปอัปเดตใน Botnoi ทันที:
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="min-w-0 flex-1 p-2.5 rounded-lg bg-[#0b0f19] border border-slate-800 text-xs text-emerald-300 break-all">
+                  {rotatedWebhookSecret}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => handleCopyWebhookValue(rotatedWebhookSecret, 'secret')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 text-xs text-slate-200 hover:bg-slate-700 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  {copiedWebhookValue === 'secret' ? 'คัดลอกแล้ว' : 'คัดลอกรหัส'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -850,7 +1171,7 @@ export function TechniciansTab({ project }: Props) {
                     <span className="text-[10px] text-slate-500">คลิกเพื่อเพิ่มทักษะ</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {COMMON_SKILL_TAGS.map((tag) => (
+                    {commonSkillTags.map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -1131,7 +1452,7 @@ export function TechniciansTab({ project }: Props) {
                   <div className="p-3 rounded-xl bg-[#070b14]/90 border border-slate-800/90 space-y-2">
                     <span className="text-[11px] text-slate-400 block font-medium">แท็กทักษะแนะนำ (คลิกเพื่อเติมด่วน):</span>
                     <div className="flex flex-wrap gap-1.5">
-                      {COMMON_SKILL_TAGS.map((tag) => (
+                      {commonSkillTags.map((tag) => (
                         <button
                           key={tag}
                           type="button"
