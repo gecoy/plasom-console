@@ -260,7 +260,7 @@ export function LandingConsolePage() {
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               aria-label="เปิดเมนูนำทาง"
-              className="md:hidden p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 hover:text-white cursor-pointer"
+              className="lg:hidden p-2 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 hover:text-white cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -268,7 +268,7 @@ export function LandingConsolePage() {
 
           {/* Mobile Responsive Menu Drawer */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-slate-800/90 px-4 py-4 space-y-3 bg-[#080d1a]/95 rounded-b-2xl">
+            <div className="lg:hidden border-t border-slate-800/90 px-4 py-4 space-y-3 bg-[#080d1a]/95 rounded-b-2xl">
               <div className="grid grid-cols-2 gap-2">
                 {[
                   { key: 'hero' as const, id: 'top', label: 'ภาพรวมแพลตฟอร์ม' },
