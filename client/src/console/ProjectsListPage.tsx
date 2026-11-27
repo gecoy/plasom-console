@@ -89,15 +89,6 @@ function getCategoryVisual(category: string) {
       secondaryGlow: 'rgba(129, 140, 248, 0.11)',
     };
   }
-  if (c.includes('เครื่องใช้ไฟฟ้า') || c.includes('ไฟฟ้า')) {
-    return {
-      Icon: Plug,
-      badgeClass: 'bg-yellow-500/12 text-yellow-300 border-yellow-500/25',
-      iconBoxClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
-      glow: 'rgba(250, 204, 21, 0.65)',
-      secondaryGlow: 'rgba(250, 204, 21, 0.11)',
-    };
-  }
   if (c.includes('แอร์')) {
     return {
       Icon: Wind,
@@ -132,6 +123,16 @@ function getCategoryVisual(category: string) {
       iconBoxClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
       glow: 'rgba(52, 211, 153, 0.65)',
       secondaryGlow: 'rgba(52, 211, 153, 0.11)',
+    };
+  }
+  // คำว่า ไฟฟ้า กว้าง (เช่น ระบบไฟฟ้ารถยนต์) จึงเช็กหลังหมวดเฉพาะทาง
+  if (c.includes('ไฟฟ้า')) {
+    return {
+      Icon: Plug,
+      badgeClass: 'bg-yellow-500/12 text-yellow-300 border-yellow-500/25',
+      iconBoxClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+      glow: 'rgba(250, 204, 21, 0.65)',
+      secondaryGlow: 'rgba(250, 204, 21, 0.11)',
     };
   }
   return {

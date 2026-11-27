@@ -328,6 +328,7 @@ export function ConsoleLoginPage() {
                         type={showPassword ? 'text' : 'password'}
                         required
                         value={password}
+                        maxLength={100}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="กรอกรหัสผ่าน"
                         className="w-full pl-4 pr-11 py-3 text-sm bg-[#070b14]/90 border border-slate-700/90 rounded-xl text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
@@ -390,6 +391,7 @@ export function ConsoleLoginPage() {
                           type={showConfirmPassword ? 'text' : 'password'}
                           required
                           value={confirmPassword}
+                          maxLength={100}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="กรอกรหัสผ่านซ้ำอีกครั้ง"
                           className={`w-full pl-4 pr-11 py-3 text-sm bg-[#070b14]/90 border rounded-xl text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 transition-all ${
