@@ -30,6 +30,13 @@ import {
   TubelightTabs,
 } from '../components/ui/twenty-first';
 
+/** เงื่อนไขรหัสผ่านให้ตรงกับ registerSchema ของเซิร์ฟเวอร์ (server/src/validations/auth.validation.ts) */
+const PASSWORD_RULES: { key: string; label: string; test: (pw: string) => boolean }[] = [
+  { key: 'length', label: 'ยาวอย่างน้อย 8 ตัวอักษร', test: (pw) => pw.length >= 8 && pw.length <= 100 },
+  { key: 'letter', label: 'มีตัวอักษรภาษาอังกฤษ (A-Z หรือ a-z) อย่างน้อย 1 ตัว', test: (pw) => /[A-Za-z]/.test(pw) },
+  { key: 'digit', label: 'มีตัวเลข (0-9) อย่างน้อย 1 ตัว', test: (pw) => /[0-9]/.test(pw) },
+];
+
 export function ConsoleLoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
@@ -56,6 +63,11 @@ export function ConsoleLoginPage() {
 
     try {
       if (mode === 'register') {
+        if (!PASSWORD_RULES.every((rule) => rule.test(password))) {
+          setError('รหัสผ่านยังไม่ตรงตามเงื่อนไข กรุณาตรวจสอบรายการด้านล่างช่องรหัสผ่าน');
+          setIsLoading(false);
+          return;
+        }
         if (password !== confirmPassword) {
           setError('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน');
           setIsLoading(false);
@@ -95,6 +107,10 @@ export function ConsoleLoginPage() {
       setIsLoading(false);
     }
   };
+
+  const passwordRuleResults = PASSWORD_RULES.map((rule) => ({ ...rule, ok: rule.test(password) }));
+  const passwordValid = passwordRuleResults.every((rule) => rule.ok);
+  const registerBlocked = mode === 'register' && (!passwordValid || password !== confirmPassword);
 
   const passwordsMatch =
     mode === 'register' && confirmPassword.length > 0 && password === confirmPassword;
@@ -159,7 +175,7 @@ export function ConsoleLoginPage() {
                   </div>
                   <div>
                     <div className="text-xs font-bold text-white">
-                      บอทเปิดใบงานใหม่ #PS-8821 อัตโนมัติ
+                      บอทเปิดใบงานใหม่ #CC-20261126-A8F2 อัตโนมัติ
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5">
                       สยามแอร์แคร์ (สาขาพระราม 2) • ผ่าน LINE OA
@@ -312,6 +328,7 @@ export function ConsoleLoginPage() {
                         type={showPassword ? 'text' : 'password'}
                         required
                         value={password}
+                        maxLength={100}
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="กรอกรหัสผ่าน"
                         className="w-full pl-4 pr-11 py-3 text-sm bg-[#070b14]/90 border border-slate-700/90 rounded-xl text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
@@ -329,6 +346,25 @@ export function ConsoleLoginPage() {
                         )}
                       </button>
                     </div>
+                    {mode === 'register' && (
+                      <ul className="pt-1 space-y-1" aria-live="polite">
+                        {passwordRuleResults.map((rule) => (
+                          <li
+                            key={rule.key}
+                            className={`flex items-center gap-1.5 text-[11px] ${
+                              rule.ok ? 'text-emerald-400' : 'text-slate-400'
+                            }`}
+                          >
+                            {rule.ok ? (
+                              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            ) : (
+                              <span className="w-3.5 h-3.5 shrink-0 rounded-full border border-slate-600" />
+                            )}
+                            <span>{rule.label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
 
                   {mode === 'register' && (
@@ -355,6 +391,7 @@ export function ConsoleLoginPage() {
                           type={showConfirmPassword ? 'text' : 'password'}
                           required
                           value={confirmPassword}
+                          maxLength={100}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder="กรอกรหัสผ่านซ้ำอีกครั้ง"
                           className={`w-full pl-4 pr-11 py-3 text-sm bg-[#070b14]/90 border rounded-xl text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 transition-all ${
@@ -384,7 +421,7 @@ export function ConsoleLoginPage() {
                   <div className="pt-1">
                     <ShimmerButton
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isLoading || registerBlocked}
                       className="w-full py-3.5 px-4 text-sm"
                     >
                       {isLoading ? (

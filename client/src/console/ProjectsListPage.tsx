@@ -21,6 +21,10 @@ import {
   Loader2,
   Trash2,
   AlertCircle,
+  Plug,
+  Droplets,
+  Laptop,
+  Camera,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -44,8 +48,48 @@ import {
 
 type BotFilterKey = 'all' | 'full' | 'chat';
 
+/** รหัสบอทว่าง หรือเป็นรหัสตัวอย่าง/รหัสปลอมจากระบบเก่า (auto-/bn-) = ยังรับแชทจาก Botnoi ไม่ได้ */
+function isPlaceholderBotId(id: string | null | undefined): boolean {
+  const v = (id || '').trim();
+  return !v || v.startsWith('auto-') || v.startsWith('bn-');
+}
+
+/** สถานะ Chatbot ที่แสดงบนการ์ด: ผูกแล้วจริง / ตั้งว่าเชื่อมแต่รหัสยังไม่จริง / ยังไม่ผูก */
+function getChatbotState(proj: ProjectItem): 'connected' | 'pending' | 'none' {
+  if (!proj.chatbotConnected) return 'none';
+  return isPlaceholderBotId(proj.botnoiBotId) ? 'pending' : 'connected';
+}
+
 function getCategoryVisual(category: string) {
-  if (category.includes('แอร์')) {
+  const c = category || '';
+  if (c.includes('ประปา')) {
+    return {
+      Icon: Droplets,
+      badgeClass: 'bg-sky-500/12 text-sky-300 border-sky-500/25',
+      iconBoxClass: 'bg-sky-500/15 text-sky-400 border-sky-500/30',
+      glow: 'rgba(56, 189, 248, 0.65)',
+      secondaryGlow: 'rgba(56, 189, 248, 0.11)',
+    };
+  }
+  if (c.includes('กล้อง')) {
+    return {
+      Icon: Camera,
+      badgeClass: 'bg-pink-500/12 text-pink-300 border-pink-500/25',
+      iconBoxClass: 'bg-pink-500/15 text-pink-400 border-pink-500/30',
+      glow: 'rgba(244, 114, 182, 0.65)',
+      secondaryGlow: 'rgba(244, 114, 182, 0.11)',
+    };
+  }
+  if (c.includes('คอมพิวเตอร์') || c.includes('โน้ตบุ๊ก') || c.includes('โน๊ตบุ๊ค')) {
+    return {
+      Icon: Laptop,
+      badgeClass: 'bg-indigo-500/12 text-indigo-300 border-indigo-500/25',
+      iconBoxClass: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30',
+      glow: 'rgba(129, 140, 248, 0.65)',
+      secondaryGlow: 'rgba(129, 140, 248, 0.11)',
+    };
+  }
+  if (c.includes('แอร์')) {
     return {
       Icon: Wind,
       badgeClass: 'bg-cyan-500/12 text-cyan-300 border-cyan-500/25',
@@ -54,7 +98,7 @@ function getCategoryVisual(category: string) {
       secondaryGlow: 'rgba(34, 211, 238, 0.11)',
     };
   }
-  if (category.includes('รถ')) {
+  if (c.includes('รถ')) {
     return {
       Icon: Car,
       badgeClass: 'bg-orange-500/12 text-orange-300 border-orange-500/25',
@@ -63,7 +107,7 @@ function getCategoryVisual(category: string) {
       secondaryGlow: 'rgba(249, 115, 22, 0.11)',
     };
   }
-  if (category.includes('มือถือ') || category.includes('ไอที')) {
+  if (c.includes('มือถือ') || c.includes('ไอที')) {
     return {
       Icon: Smartphone,
       badgeClass: 'bg-violet-500/12 text-violet-300 border-violet-500/25',
@@ -72,13 +116,23 @@ function getCategoryVisual(category: string) {
       secondaryGlow: 'rgba(167, 139, 250, 0.11)',
     };
   }
-  if (category.includes('โซฟา') || category.includes('เฟอร์นิเจอร์')) {
+  if (c.includes('โซฟา') || c.includes('เฟอร์นิเจอร์')) {
     return {
       Icon: Armchair,
       badgeClass: 'bg-emerald-500/12 text-emerald-300 border-emerald-500/25',
       iconBoxClass: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
       glow: 'rgba(52, 211, 153, 0.65)',
       secondaryGlow: 'rgba(52, 211, 153, 0.11)',
+    };
+  }
+  // คำว่า ไฟฟ้า กว้าง (เช่น ระบบไฟฟ้ารถยนต์) จึงเช็กหลังหมวดเฉพาะทาง
+  if (c.includes('ไฟฟ้า')) {
+    return {
+      Icon: Plug,
+      badgeClass: 'bg-yellow-500/12 text-yellow-300 border-yellow-500/25',
+      iconBoxClass: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
+      glow: 'rgba(250, 204, 21, 0.65)',
+      secondaryGlow: 'rgba(250, 204, 21, 0.11)',
     };
   }
   return {
@@ -196,10 +250,11 @@ export function ProjectsListPage() {
           name: demo.name,
           branchName: demo.branchName,
           category: demo.category,
-          chatbotConnected: demo.chatbotConnected,
-          botnoiBotId: demo.botnoiBotId || null,
-          voicebotConnected: demo.voicebotConnected,
-          voiceAgentId: demo.voiceAgentId || null,
+          // ร้านตัวอย่างยังไม่ได้ผูกบอทจริง ไม่ให้ขึ้นสถานะหลอกว่าเชื่อมต่อแล้ว
+          chatbotConnected: false,
+          botnoiBotId: null,
+          voicebotConnected: false,
+          voiceAgentId: null,
           greetingMessage: demo.greetingMessage,
           requiredFields: demo.requiredFields,
           features: demo.features,
@@ -624,13 +679,20 @@ export function ProjectsListPage() {
                               <div className="mt-4 pt-4 border-t border-slate-800/80 flex flex-wrap gap-2">
                                 <span
                                   className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium ${
-                                    proj.chatbotConnected
+                                    getChatbotState(proj) === 'connected'
                                       ? 'bg-blue-500/10 text-blue-300 border border-blue-500/25'
+                                      : getChatbotState(proj) === 'pending'
+                                      ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
                                       : 'bg-slate-900 text-slate-500 border border-slate-800'
                                   }`}
                                 >
                                   <Bot className="w-3.5 h-3.5" />
-                                  Chatbot: {proj.chatbotConnected ? 'เชื่อมต่อแล้ว' : 'ยังไม่ผูก'}
+                                  Chatbot:{' '}
+                                  {getChatbotState(proj) === 'connected'
+                                    ? 'เชื่อมต่อแล้ว'
+                                    : getChatbotState(proj) === 'pending'
+                                    ? 'รอผูก Bot ID จริง'
+                                    : 'ยังไม่ผูก'}
                                 </span>
                                 <span
                                   className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg font-medium ${
@@ -743,12 +805,19 @@ export function ProjectsListPage() {
                         <div className="flex flex-wrap items-center gap-2 shrink-0">
                           <span
                             className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
-                              proj.chatbotConnected
+                              getChatbotState(proj) === 'connected'
                                 ? 'bg-blue-500/10 text-blue-300 border border-blue-500/25'
+                                : getChatbotState(proj) === 'pending'
+                                ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
                                 : 'bg-slate-900 text-slate-500'
                             }`}
                           >
-                            Chat: {proj.chatbotConnected ? 'เชื่อมแล้ว' : 'ยังไม่ผูก'}
+                            Chat:{' '}
+                            {getChatbotState(proj) === 'connected'
+                              ? 'เชื่อมแล้ว'
+                              : getChatbotState(proj) === 'pending'
+                              ? 'รอผูก Bot ID จริง'
+                              : 'ยังไม่ผูก'}
                           </span>
                           <span
                             className={`text-xs px-2.5 py-1 rounded-lg font-medium ${
