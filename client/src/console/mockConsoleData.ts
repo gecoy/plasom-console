@@ -28,7 +28,7 @@ export interface ConsoleTicket {
   projectId: string;
   customerName: string;
   customerPhone: string;
-  channel: 'LINE OA' | 'Facebook' | 'Voicebot';
+  channel: 'LINE OA' | 'Voicebot' | 'Walk-in';
   subject: string;
   symptom: string;
   preferredDate: string;
@@ -41,7 +41,7 @@ export interface ChatThread {
   id: string;
   projectId: string;
   customerName: string;
-  channel: 'LINE OA' | 'Facebook' | 'Voicebot';
+  channel: 'LINE OA' | 'Voicebot' | 'Walk-in';
   lastMessage: string;
   updatedAt: string;
   openedTicketCode?: string;
@@ -75,8 +75,8 @@ export const INITIAL_PROJECTS: ProjectItem[] = [
     name: 'สยามแอร์แคร์ เซอร์วิส',
     category: 'งานแอร์และเครื่องทำความเย็น',
     branchName: 'สาขาพระราม 2',
-    chatbotConnected: true,
-    botnoiBotId: 'bn-chat-air01',
+    chatbotConnected: false,
+    botnoiBotId: '',
     voicebotConnected: true,
     voiceAgentId: 'bn-voice-air01',
     greetingMessage: 'สวัสดีค่ะ สยามแอร์แคร์ยินดีให้บริการ แจ้งล้างแอร์หรือซ่อมแอร์ได้เลยนะคะ',
@@ -96,8 +96,8 @@ export const INITIAL_PROJECTS: ProjectItem[] = [
     name: 'อู่เฮียสมชาย ออโต้เซอร์วิส',
     category: 'อู่ซ่อมรถยนต์และเช็กระยะ',
     branchName: 'สาขาลาดพร้าว',
-    chatbotConnected: true,
-    botnoiBotId: 'bn-chat-car02',
+    chatbotConnected: false,
+    botnoiBotId: '',
     voicebotConnected: false,
     voiceAgentId: '',
     greetingMessage: 'สวัสดีครับ อู่เฮียสมชายครับ แจ้งรุ่นรถ ทะเบียนรถ และอาการได้เลยครับ',
@@ -117,7 +117,7 @@ export const INITIAL_PROJECTS: ProjectItem[] = [
 export const MOCK_TICKETS: ConsoleTicket[] = [
   {
     id: 't-101',
-    trackingCode: 'PS-8821',
+    trackingCode: 'CC-8821',
     projectId: 'proj-air-rama2',
     customerName: 'คุณพิมพ์ชนก',
     customerPhone: '08X-XXX-1102',
@@ -134,7 +134,7 @@ export const MOCK_TICKETS: ConsoleTicket[] = [
   },
   {
     id: 't-102',
-    trackingCode: 'PS-8822',
+    trackingCode: 'CC-8822',
     projectId: 'proj-air-rama2',
     customerName: 'คุณภาคิน',
     customerPhone: '08X-XXX-4490',
@@ -152,7 +152,7 @@ export const MOCK_TICKETS: ConsoleTicket[] = [
   },
   {
     id: 't-201',
-    trackingCode: 'CAR-3041',
+    trackingCode: 'CC-3041',
     projectId: 'proj-car-somchai',
     customerName: 'คุณธนพล',
     customerPhone: '09X-XXX-7721',
@@ -176,14 +176,14 @@ export const MOCK_THREADS: ChatThread[] = [
     projectId: 'proj-air-rama2',
     customerName: 'คุณพิมพ์ชนก',
     channel: 'LINE OA',
-    lastMessage: 'บันทึกใบงานเรียบร้อยแล้วค่ะ รหัสของคุณลูกค้าคือ PS-8821',
+    lastMessage: 'บันทึกใบงานเรียบร้อยแล้วค่ะ รหัสของคุณลูกค้าคือ CC-8821',
     updatedAt: '10 นาทีที่แล้ว',
-    openedTicketCode: 'PS-8821',
+    openedTicketCode: 'CC-8821',
     messages: [
       { sender: 'USER', text: 'แอร์ Daikin 18000 BTU ไม่เย็นเลยค่ะ มีน้ำหยดด้วย', time: '12:40' },
       { sender: 'BOT', text: 'รับทราบค่ะ ขอทราบชื่อคุณลูกค้า เบอร์ติดต่อ และวันที่สะดวกนัดช่าง (ตั้งแต่พรุ่งนี้เป็นต้นไป) ได้เลยนะคะ', time: '12:40' },
       { sender: 'USER', text: 'ชื่อพิมพ์ชนกค่ะ นัดวันที่ 25 พ.ย. นี้ค่ะ', time: '12:42' },
-      { sender: 'BOT', text: 'บันทึกใบงานเรียบร้อยแล้วค่ะ รหัสของคุณลูกค้าคือ PS-8821', time: '12:43' },
+      { sender: 'BOT', text: 'บันทึกใบงานเรียบร้อยแล้วค่ะ รหัสของคุณลูกค้าคือ CC-8821', time: '12:43' },
     ],
   },
   {
@@ -191,14 +191,14 @@ export const MOCK_THREADS: ChatThread[] = [
     projectId: 'proj-car-somchai',
     customerName: 'คุณธนพล',
     channel: 'LINE OA',
-    lastMessage: 'รับคิวนัดเข้าอู่วันที่ 25 พ.ย. รหัสคิว CAR-3041 ครับ',
+    lastMessage: 'รับคิวนัดเข้าอู่วันที่ 25 พ.ย. รหัสคิว CC-3041 ครับ',
     updatedAt: '25 นาทีที่แล้ว',
-    openedTicketCode: 'CAR-3041',
+    openedTicketCode: 'CC-3041',
     messages: [
       { sender: 'USER', text: 'รถ Civic เหยียบเบรกแล้วดังเอี๊ยดๆ ครับ เลขไมล์สี่หมื่นห้า', time: '12:20' },
       { sender: 'BOT', text: 'รถยังขับเคลื่อนเข้าอู่เองได้ไหมครับ และสะดวกนัดเข้าเช็กวันไหนดีครับ', time: '12:20' },
       { sender: 'USER', text: 'ขับได้ปกติครับ ขอจองคิววันที่ 25 พ.ย. ครับ', time: '12:22' },
-      { sender: 'BOT', text: 'รับคิวนัดเข้าอู่วันที่ 25 พ.ย. รหัสคิว CAR-3041 ครับ', time: '12:22' },
+      { sender: 'BOT', text: 'รับคิวนัดเข้าอู่วันที่ 25 พ.ย. รหัสคิว CC-3041 ครับ', time: '12:22' },
     ],
   },
 ];
@@ -210,9 +210,9 @@ export const MOCK_TECHS: TechnicianItem[] = [
 ];
 
 export const MOCK_REVIEWS: SatisfactionItem[] = [
-  { id: 'rv-1', projectId: 'proj-air-rama2', customerName: 'คุณกานดา', ticketCode: 'PS-8790', rating: 5, comment: 'บอทรับเรื่องไวมาก ช่างมาตรงเวลา แอร์เย็นฉ่ำเลยค่ะ', createdAt: '2026-11-22' },
-  { id: 'rv-2', projectId: 'proj-air-rama2', customerName: 'คุณวิชัย', ticketCode: 'PS-8795', rating: 4, comment: 'จองคิวง่ายผ่านไลน์ ไม่ต้องรอแอดมินตอบนาน', createdAt: '2026-11-23' },
-  { id: 'rv-3', projectId: 'proj-car-somchai', customerName: 'คุณนภัส', ticketCode: 'CAR-3012', rating: 5, comment: 'แจ้งอาการไว้ก่อน พอถึงอู่ช่างเตรียมอะไหล่รอไว้ให้เลย สะดวกมากครับ', createdAt: '2026-11-22' },
+  { id: 'rv-1', projectId: 'proj-air-rama2', customerName: 'คุณกานดา', ticketCode: 'CC-8790', rating: 5, comment: 'บอทรับเรื่องไวมาก ช่างมาตรงเวลา แอร์เย็นฉ่ำเลยค่ะ', createdAt: '2026-11-22' },
+  { id: 'rv-2', projectId: 'proj-air-rama2', customerName: 'คุณวิชัย', ticketCode: 'CC-8795', rating: 4, comment: 'จองคิวง่ายผ่านไลน์ ไม่ต้องรอแอดมินตอบนาน', createdAt: '2026-11-23' },
+  { id: 'rv-3', projectId: 'proj-car-somchai', customerName: 'คุณนภัส', ticketCode: 'CC-3012', rating: 5, comment: 'แจ้งอาการไว้ก่อน พอถึงอู่ช่างเตรียมอะไหล่รอไว้ให้เลย สะดวกมากครับ', createdAt: '2026-11-22' },
 ];
 
 function getStorageKey(userId?: string): string {

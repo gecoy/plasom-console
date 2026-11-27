@@ -51,10 +51,16 @@ import {
   Copy,
   ChevronDown,
 } from 'lucide-react';
-import type { ConsoleTicket, ProjectItem } from '../mockConsoleData';
+import {
+  MOCK_THREADS,
+  type ConsoleTicket,
+  type ProjectItem,
+  type TechnicianItem,
+} from '../mockConsoleData';
 import {
   fetchProjectTicketsApi,
   fetchProjectTechniciansApi,
+  fetchTicketMessagesApi,
   createManualTicketInDb,
   updateProjectTicketApi,
   getApiErrorMessage,
@@ -63,8 +69,6 @@ import {
   readCachedTickets,
   readCachedTechnicians,
 } from '../consoleApi';
-
-import type { TechnicianItem } from '../mockConsoleData';
 
 interface Props {
   project: ProjectItem;
@@ -199,6 +203,16 @@ function formatThaiDateFull(dateStr: string) {
   }
 }
 
+function getTodayLocalDateStr(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function getChannelLabel(channel: string): string {
+  if (channel === 'Walk-in') return 'หน้าร้าน / โทรศัพท์';
+  return channel;
+}
+
 // Custom Dark Date RANGE Picker Component (รองรับการเลือกช่วงวันที่ เช่น 1 ต.ค. - 8 ต.ค.)
 function CustomDarkDateRangePicker({
   range,
@@ -212,7 +226,7 @@ function CustomDarkDateRangePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const initialDate = range.start ? new Date(range.start) : new Date(2026, 10, 24);
+  const initialDate = range.start ? new Date(range.start) : new Date();
   const [currentYear, setCurrentYear] = useState(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth()); // 0-11
 
@@ -461,7 +475,7 @@ function CustomDarkSingleDatePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const initialDate = value ? new Date(value) : new Date(2026, 10, 24);
+  const initialDate = value ? new Date(value) : new Date();
   const [currentYear, setCurrentYear] = useState(initialDate.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(initialDate.getMonth()); // 0-11
 
@@ -522,7 +536,7 @@ function CustomDarkSingleDatePicker({
     setIsOpen(false);
   };
 
-  const todayStr = '2026-11-24';
+  const todayStr = getTodayLocalDateStr();
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -764,7 +778,10 @@ export function TicketsTab({ project }: Props) {
   const [activeView, setActiveView] = useState<'table' | 'calendar' | 'dashboard'>('table');
 
   // Calendar View Month/Year State (สำหรับหน้าปฏิทินเต็มเดือน)
-  const [calDate, setCalDate] = useState(new Date(2026, 10, 1)); // พฤศจิกายน 2026
+  const [calDate, setCalDate] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
 
   // Filters & Search
@@ -798,6 +815,10 @@ export function TicketsTab({ project }: Props) {
   const [selectedTicket, setSelectedTicket] = useState<ExtendedTicket | null>(null);
   const [detailTab, setDetailTab] = useState<'info' | 'chat' | 'timeline' | 'notes' | 'crm' | 'invoice'>('info');
   const [newNoteInput, setNewNoteInput] = useState('');
+  const [ticketChatMessages, setTicketChatMessages] = useState<
+    { id: string; text: string; sender: string; fromStaff?: boolean; createdAt?: string; time?: string; user?: { name?: string } }[]
+  >([]);
+  const [isLoadingTicketChat, setIsLoadingTicketChat] = useState(false);
 
   // Phase 3: Mobile Simulator Modal
   const [isMobileSimModalOpen, setIsMobileSimModalOpen] = useState(false);
@@ -809,7 +830,7 @@ export function TicketsTab({ project }: Props) {
   // Modal: มอบหมายงาน & เลือกวันนัดหมาย (เพื่อให้งานขึ้นบนปฏิทินทันที)
   const [assigningTicket, setAssigningTicket] = useState<ExtendedTicket | null>(null);
   const [assignTechName, setAssignTechName] = useState('');
-  const [assignDate, setAssignDate] = useState(new Date().toISOString().slice(0, 10));
+  const [assignDate, setAssignDate] = useState(getTodayLocalDateStr);
   const [assignTimeSlot, setAssignTimeSlot] = useState('09:00 - 12:00 น. (ช่วงเช้า)');
 
   // Modal: ปิดงานพร้อมหลักฐาน
@@ -825,10 +846,10 @@ export function TicketsTab({ project }: Props) {
   // Form State for Manual Ticket
   const [createCustomerName, setCreateCustomerName] = useState('');
   const [createCustomerPhone, setCreateCustomerPhone] = useState('');
-  const [createChannel, setCreateChannel] = useState<'LINE OA' | 'Facebook' | 'Voicebot'>('LINE OA');
+  const [createChannel, setCreateChannel] = useState<'LINE OA' | 'Voicebot' | 'Walk-in'>('LINE OA');
   const [createSubject, setCreateSubject] = useState('');
   const [createSymptom, setCreateSymptom] = useState('');
-  const [createPreferredDate, setCreatePreferredDate] = useState(new Date().toISOString().slice(0, 10));
+  const [createPreferredDate, setCreatePreferredDate] = useState(getTodayLocalDateStr);
   const [createTimeSlot, setCreateTimeSlot] = useState('09:00 - 12:00 น. (ช่วงเช้า)');
   const [createPriority, setCreatePriority] = useState<TicketPriority>('NORMAL');
   const [createAddress, setCreateAddress] = useState('');
@@ -869,6 +890,64 @@ export function TicketsTab({ project }: Props) {
 
   const projectTickets = tickets.filter((t) => t.projectId === project.id);
   const projectTechs = dbTechs;
+
+  const handleOpenMobileSim = () => {
+    setMobileSimTechName((prev) =>
+      prev && projectTechs.some((tc) => tc.name === prev) ? prev : projectTechs[0]?.name || ''
+    );
+    setIsMobileSimModalOpen(true);
+  };
+
+  useEffect(() => {
+    if (isMobileSimModalOpen && !mobileSimTechName && projectTechs.length > 0) {
+      setMobileSimTechName(projectTechs[0].name);
+    }
+  }, [isMobileSimModalOpen, mobileSimTechName, projectTechs]);
+
+  useEffect(() => {
+    if (!selectedTicket || detailTab !== 'chat') return;
+    if (project.id.startsWith('proj-')) {
+      const matchedThread = MOCK_THREADS.find(
+        (th) => th.openedTicketCode === selectedTicket.trackingCode
+      );
+      setTicketChatMessages(
+        matchedThread
+          ? matchedThread.messages.map((m, idx) => ({
+              id: `mock-msg-${idx}`,
+              text: m.text,
+              sender: m.sender === 'BOT' ? 'BOT' : 'CUSTOMER',
+              time: m.time,
+            }))
+          : []
+      );
+      setIsLoadingTicketChat(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingTicketChat(true);
+    setTicketChatMessages([]);
+    fetchTicketMessagesApi(project.id, selectedTicket.id)
+      .then((msgs) => {
+        if (!cancelled) {
+          setTicketChatMessages(Array.isArray(msgs) ? msgs : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTicketChatMessages([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingTicketChat(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project.id, selectedTicket, detailTab]);
 
   // Conflict Detection Helper
   const getTechJobCountOnDate = (techName: string, date: string, excludeTicketId?: string) => {
@@ -1136,7 +1215,13 @@ export function TicketsTab({ project }: Props) {
       return;
     }
 
-        let createdDb: any = null;
+    const cleanedExtra = Object.fromEntries(
+      Object.entries(createDynamicExtra)
+        .map(([k, v]) => [k, v.trim()])
+        .filter(([, v]) => v !== '')
+    );
+
+    let createdDb: any = null;
     if (!project.id.startsWith('proj-')) {
       try {
         createdDb = await createManualTicketInDb(project.id, {
@@ -1149,8 +1234,18 @@ export function TicketsTab({ project }: Props) {
           channel: createChannel,
           timeSlot: createTimeSlot,
           priority: createPriority,
-          extraDetails: createDynamicExtra,
+          extraDetails: cleanedExtra,
         });
+        if (createdDb?.id && createAssignedTech) {
+          const matchedTech = projectTechs.find((tc) => tc.name === createAssignedTech);
+          if (matchedTech) {
+            await updateProjectTicketApi(project.id, createdDb.id, {
+              status: 'RECEIVED',
+              technicianId: matchedTech.id,
+              note: createTimeSlot,
+            });
+          }
+        }
       } catch (err: any) {
         const msg =
           err?.response?.data?.error ||
@@ -1159,7 +1254,8 @@ export function TicketsTab({ project }: Props) {
         return;
       }
     }
-    const code = createdDb?.trackingCode || `PS-${Math.floor(1000 + Math.random() * 9000)}`;
+    const compactToday = getTodayLocalDateStr().replace(/-/g, '');
+    const code = createdDb?.trackingCode || `CC-${compactToday}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const newTicket: ExtendedTicket = {
       id: createdDb?.id || `t-manual-${Date.now()}`,
@@ -1176,7 +1272,7 @@ export function TicketsTab({ project }: Props) {
       address: createAddress.trim() || 'ที่อยู่ระบุในใบงาน',
       status: createAssignedTech ? 'ASSIGNED' : 'PENDING',
       assignedTechName: createAssignedTech || undefined,
-      extraDetails: createDynamicExtra,
+      extraDetails: cleanedExtra,
       internalNotes: [
         {
           id: `note-${Date.now()}`,
@@ -1190,6 +1286,17 @@ export function TicketsTab({ project }: Props) {
     startTransition(() => {
       setTickets((prev) => [newTicket, ...prev]);
     });
+    setCreateCustomerName('');
+    setCreateCustomerPhone('');
+    setCreateChannel('LINE OA');
+    setCreateSubject('');
+    setCreateSymptom('');
+    setCreatePreferredDate(getTodayLocalDateStr());
+    setCreateTimeSlot('09:00 - 12:00 น. (ช่วงเช้า)');
+    setCreatePriority('NORMAL');
+    setCreateAddress('');
+    setCreateAssignedTech('');
+    setCreateDynamicExtra({});
     setIsCreateModalOpen(false);
     showToast(`สร้างใบงานใหม่สำเร็จ: ${code} และบันทึกในปฏิทินแล้ว`, 'success');
   };
@@ -1376,7 +1483,7 @@ export function TicketsTab({ project }: Props) {
             <div className="flex items-center gap-1 p-1 rounded-xl bg-[#0b0f19]/90 border border-slate-800/90">
               <button
                 type="button"
-                onClick={() => setIsMobileSimModalOpen(true)}
+                onClick={handleOpenMobileSim}
                 className="h-[32px] px-2.5 rounded-lg hover:bg-slate-800/80 text-slate-300 hover:text-emerald-300 text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap"
                 title="จำลองมุมมองแอปมือถือของช่างสำหรับรับงานและนำทาง"
               >
@@ -1701,8 +1808,8 @@ export function TicketsTab({ project }: Props) {
           >
             <option value="ALL">ช่องทาง: ทั้งหมด</option>
             <option value="LINE OA">LINE OA</option>
-            <option value="Facebook">Facebook</option>
             <option value="Voicebot">Voicebot</option>
+            <option value="Walk-in">หน้าร้าน / โทรศัพท์</option>
           </select>
 
           {/* Date Range Picker */}
@@ -2012,7 +2119,7 @@ export function TicketsTab({ project }: Props) {
                                 className={`text-[10px] px-2 py-0.5 rounded-full font-medium border inline-flex items-center gap-1 whitespace-nowrap shrink-0 ${
                                   ticket.channel === 'LINE OA'
                                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
-                                    : ticket.channel === 'Facebook'
+                                    : ticket.channel === 'Walk-in'
                                     ? 'bg-blue-500/10 text-blue-400 border-blue-500/25'
                                     : 'bg-orange-500/10 text-orange-400 border-orange-500/25'
                                 }`}
@@ -2021,12 +2128,12 @@ export function TicketsTab({ project }: Props) {
                                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                                     ticket.channel === 'LINE OA'
                                       ? 'bg-emerald-400'
-                                      : ticket.channel === 'Facebook'
+                                      : ticket.channel === 'Walk-in'
                                       ? 'bg-blue-400'
                                       : 'bg-orange-400'
                                   }`}
                                 />
-                                <span>{ticket.channel}</span>
+                                <span>{getChannelLabel(ticket.channel)}</span>
                               </span>
                             </div>
                           </td>
@@ -2345,7 +2452,10 @@ export function TicketsTab({ project }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCalDate(new Date(2026, 10, 1))}
+                  onClick={() => {
+                    const now = new Date();
+                    setCalDate(new Date(now.getFullYear(), now.getMonth(), 1));
+                  }}
                   className="px-2 py-1 text-xs text-orange-400 font-semibold hover:bg-slate-800 rounded-lg cursor-pointer"
                 >
                   เดือนปัจจุบัน
@@ -2399,7 +2509,7 @@ export function TicketsTab({ project }: Props) {
                   const dd = String(dayNum).padStart(2, '0');
                   const dateKey = `${calYear}-${mm}-${dd}`;
                   const dayTickets = projectTickets.filter((t) => t.preferredDate === dateKey);
-                  const isToday = dateKey === '2026-11-24';
+                  const isToday = dateKey === getTodayLocalDateStr();
                   const isSelected = dateKey === selectedCalDay;
 
                   return (
@@ -2774,15 +2884,15 @@ export function TicketsTab({ project }: Props) {
             },
           },
           {
-            key: 'Facebook',
-            label: 'Facebook',
-            count: dashTickets.filter((t) => t.channel === 'Facebook').length,
+            key: 'Walk-in',
+            label: 'หน้าร้าน / โทรศัพท์',
+            count: dashTickets.filter((t) => t.channel === 'Walk-in').length,
             stroke: '#3b82f6',
             dotClass: 'bg-blue-400',
             textClass: 'text-blue-400',
-            active: channelFilter === 'Facebook',
+            active: channelFilter === 'Walk-in',
             onClick: () => {
-              setChannelFilter((prev) => (prev === 'Facebook' ? 'ALL' : 'Facebook'));
+              setChannelFilter((prev) => (prev === 'Walk-in' ? 'ALL' : 'Walk-in'));
               setCurrentPage(1);
             },
           },
@@ -2960,7 +3070,9 @@ export function TicketsTab({ project }: Props) {
                 )}
                 <div className="px-3.5 py-2 rounded-xl bg-[#0b0f19] border border-slate-700 text-xs text-slate-300 font-medium flex items-center gap-2">
                   <CalendarIcon className="w-3.5 h-3.5 text-orange-400" />
-                  <span>ประจำเดือน พฤศจิกายน 2569</span>
+                  <span>
+                    ประจำเดือน {monthThaiNames[new Date().getMonth()]} {new Date().getFullYear() + 543}
+                  </span>
                 </div>
                 <button
                   type="button"
@@ -2999,7 +3111,14 @@ export function TicketsTab({ project }: Props) {
                   </div>
                   <div className="text-[11px] text-emerald-400 font-medium mt-1 flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" />
-                    <span>+18.4% จากเดือนก่อน</span>
+                    <span>
+                      เฉลี่ย ฿
+                      {(completedTickets.length > 0
+                        ? Math.round(totalRevenue / completedTickets.length)
+                        : 0
+                      ).toLocaleString()}{' '}
+                      / ใบงาน
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3413,7 +3532,7 @@ export function TicketsTab({ project }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsMobileSimModalOpen(true)}
+                  onClick={handleOpenMobileSim}
                   className="px-3.5 py-1.5 rounded-xl bg-[#111827] hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 font-medium cursor-pointer transition-colors flex items-center gap-1.5"
                 >
                   <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
@@ -3671,40 +3790,54 @@ export function TicketsTab({ project }: Props) {
             </div>
 
             <div className="p-6 space-y-4 overflow-y-auto text-xs">
-              <div className="p-4 rounded-xl bg-[#0b0f19] border border-slate-800 flex items-center justify-between gap-3">
-                <div className="space-y-1">
+              <div className="p-4 rounded-xl bg-[#0b0f19] border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="font-bold text-sm text-white">Webhook Endpoint: Active</span>
                   </div>
-                  <div className="text-slate-400 text-[11px] font-mono">
-                    https://api.plasom.app/v1/webhook/{project.id}
+                  <div className="text-slate-400 text-[11px] font-mono break-all">
+                    {`${typeof window !== 'undefined' ? window.location.origin : ''}/api/webhooks/${project.id}`}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    showToast('กำลังทดสอบ Ping ไปยัง Webhook Endpoint...', 'info');
-                    setTimeout(() => {
-                      const newLog: WebhookLogItem = {
-                        id: `wh-${Date.now()}`,
-                        timestamp: new Date().toLocaleTimeString('th-TH'),
-                        channel: 'Botnoi Test Ping',
-                        statusCode: 200,
-                        trackingCode: 'PING-OK',
-                        customerName: 'System Health Check',
-                        latencyMs: Math.floor(90 + Math.random() * 40),
-                        payload: { action: 'ping', status: 'healthy', project: project.name },
-                      };
-                      setWebhookLogs((prev) => [newLog, ...prev]);
-                      showToast('🟢 Webhook เชื่อมต่อสมบูรณ์ (HTTP 200 OK • Latency: 114ms)', 'success');
-                    }, 500);
-                  }}
-                  className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>ทดสอบส่ง Ping</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const webhookUrl = `${window.location.origin}/api/webhooks/${project.id}`;
+                      navigator.clipboard?.writeText(webhookUrl);
+                      showToast('คัดลอก Webhook URL เรียบร้อยแล้ว', 'success');
+                    }}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-orange-400" />
+                    <span>คัดลอก URL</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast('กำลังทดสอบ Ping ไปยัง Webhook Endpoint...', 'info');
+                      setTimeout(() => {
+                        const newLog: WebhookLogItem = {
+                          id: `wh-${Date.now()}`,
+                          timestamp: new Date().toLocaleTimeString('th-TH'),
+                          channel: 'Botnoi Test Ping',
+                          statusCode: 200,
+                          trackingCode: 'PING-OK',
+                          customerName: 'System Health Check',
+                          latencyMs: Math.floor(90 + Math.random() * 40),
+                          payload: { action: 'ping', status: 'healthy', project: project.name },
+                        };
+                        setWebhookLogs((prev) => [newLog, ...prev]);
+                        showToast('🟢 Webhook เชื่อมต่อสมบูรณ์ (HTTP 200 OK • Latency: 114ms)', 'success');
+                      }, 500);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>ทดสอบส่ง Ping</span>
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -3874,7 +4007,7 @@ export function TicketsTab({ project }: Props) {
                   </div>
                   <div>
                     <span className="text-slate-400 block mb-0.5">ช่องทางติดต่อ:</span>
-                    <span className="font-medium text-slate-200">{selectedTicket.channel}</span>
+                    <span className="font-medium text-slate-200">{getChannelLabel(selectedTicket.channel)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block mb-0.5">วัน-เวลานัดหมาย:</span>
@@ -3971,22 +4104,64 @@ export function TicketsTab({ project }: Props) {
             {detailTab === 'chat' && (
               <div className="p-6 overflow-y-auto space-y-3 max-h-[55vh]">
                 <div className="text-xs text-slate-400 mb-2">
-                  บันทึกบทสนทนาอัตโนมัติจากช่องทาง {selectedTicket.channel}
+                  บันทึกบทสนทนาจากช่องทาง {getChannelLabel(selectedTicket.channel)}
                 </div>
-                <div className="space-y-3">
-                  <div className="flex flex-col items-end">
-                    <div className="text-[10px] text-slate-500 mb-1">{selectedTicket.customerName} • 10:15</div>
-                    <div className="bg-orange-500 text-white rounded-2xl rounded-br-none px-4 py-2 text-xs">
-                      {selectedTicket.symptom}
+                {isLoadingTicketChat ? (
+                  <div className="p-8 rounded-xl bg-[#0b0f19] border border-slate-800 text-center text-xs text-slate-400">
+                    กำลังดึงประวัติแชทของใบงานจากฐานข้อมูล...
+                  </div>
+                ) : ticketChatMessages.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-[#0b0f19] border border-slate-800 text-center space-y-1">
+                    <div className="text-xs font-semibold text-slate-300">
+                      ยังไม่มีประวัติข้อความแชทในใบงานนี้
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      ข้อความจะปรากฏเมื่อใบงานถูกเปิดผ่าน Chatbot / Voicebot หรือมีการบันทึกบทสนทนา
                     </div>
                   </div>
-                  <div className="flex flex-col items-start">
-                    <div className="text-[10px] text-slate-500 mb-1">บอทประจำร้าน • 10:15</div>
-                    <div className="bg-[#0b0f19] border border-slate-700 text-slate-200 rounded-2xl rounded-bl-none px-4 py-2 text-xs">
-                      รับเรื่องเรียบร้อยค่ะ บันทึกใบงานรหัส <strong>{selectedTicket.trackingCode}</strong> และนัดหมายวันที่ {formatThaiDate(selectedTicket.preferredDate)} ให้แล้วนะคะ
-                    </div>
+                ) : (
+                  <div className="space-y-3">
+                    {ticketChatMessages.map((msg, idx) => {
+                      const isBotOrStaff =
+                        msg.sender === 'BOT' || msg.sender === 'STAFF' || Boolean(msg.fromStaff);
+                      const timeText =
+                        msg.time ||
+                        (msg.createdAt
+                          ? new Date(msg.createdAt).toLocaleTimeString('th-TH', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '');
+                      const senderName =
+                        msg.sender === 'STAFF' || msg.fromStaff
+                          ? msg.user?.name || 'เจ้าหน้าที่ร้าน'
+                          : msg.sender === 'BOT'
+                          ? 'บอทประจำร้าน'
+                          : selectedTicket.customerName;
+
+                      return (
+                        <div
+                          key={msg.id || idx}
+                          className={`flex flex-col ${isBotOrStaff ? 'items-start' : 'items-end'}`}
+                        >
+                          <div className="text-[10px] text-slate-500 mb-1">
+                            {senderName}
+                            {timeText ? ` • ${timeText}` : ''}
+                          </div>
+                          <div
+                            className={`max-w-[85%] px-4 py-2.5 text-xs whitespace-pre-wrap break-words ${
+                              isBotOrStaff
+                                ? 'bg-[#0b0f19] border border-slate-700 text-slate-200 rounded-2xl rounded-bl-none'
+                                : 'bg-orange-500 text-white rounded-2xl rounded-br-none'
+                            }`}
+                          >
+                            {msg.text}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -4077,37 +4252,48 @@ export function TicketsTab({ project }: Props) {
             {/* CRM & Equipment & Recurring Maintenance */}
             {detailTab === 'crm' && (
               <div className="p-6 overflow-y-auto space-y-4 max-h-[55vh] text-xs">
-                {/* Equipment & Asset Information */}
+                {/* Equipment & Dynamic Extra Details */}
                 <div className="bg-[#0b0f19] p-4 rounded-xl border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                     <h4 className="font-bold text-white flex items-center gap-2">
                       <Wrench className="w-4 h-4 text-orange-400" />
-                      <span>ข้อมูลอุปกรณ์ / ประวัติเครื่องจักร</span>
+                      <span>ข้อมูลเฉพาะอาชีพ / รายละเอียดในใบงาน</span>
                     </h4>
                     <span className="text-[10px] bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded-full border border-orange-500/20">
-                      CRM Verified
+                      {project.category}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-slate-300">
-                    <div>
-                      <span className="text-slate-400 block text-[11px]">รุ่น / โมเดลอุปกรณ์:</span>
-                      <span className="font-semibold text-white">
-                        {selectedTicket.equipmentModel || 'Daikin Inverter FTKQ-18 (18,000 BTU)'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[11px]">หมายเลขประจำเครื่อง (Serial No.):</span>
-                      <span className="font-mono text-slate-200">SN-DK-2024-91823</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[11px]">อายุการติดตั้ง:</span>
-                      <span className="text-slate-200">1 ปี 3 เดือน (ติดตั้ง มิ.ย. 2568)</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[11px]">สถานะการรับประกัน:</span>
-                      <span className="text-emerald-400 font-semibold">✓ อยู่ในประกันศูนย์ (ถึง ธ.ค. 2570)</span>
-                    </div>
-                  </div>
+                  {(() => {
+                    const extraEntries = Object.entries(selectedTicket.extraDetails || {}).filter(
+                      ([key, val]) =>
+                        !key.startsWith('_') &&
+                        val !== undefined &&
+                        val !== null &&
+                        String(val).trim() !== ''
+                    );
+                    if (extraEntries.length === 0) {
+                      return (
+                        <div className="p-3 rounded-lg bg-[#111827] border border-slate-800 text-center text-slate-500 text-xs">
+                          ไม่มีข้อมูลฟิลด์เฉพาะอาชีพเพิ่มเติมในใบงานนี้
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-300">
+                        {extraEntries.map(([key, val]) => (
+                          <div
+                            key={key}
+                            className="p-2.5 rounded-lg bg-[#111827] border border-slate-800/80"
+                          >
+                            <span className="text-slate-400 block text-[11px]">{key}:</span>
+                            <span className="font-semibold text-white break-words">
+                              {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Recurring Maintenance Scheduler */}
@@ -4158,13 +4344,14 @@ export function TicketsTab({ project }: Props) {
                     <div>
                       <div className="font-semibold text-white">นัดหมายตรวจเช็คครั้งถัดไป:</div>
                       <div className="text-[11px] text-orange-200 mt-0.5">
-                        {selectedTicket.preferredDate
-                          ? (() => {
-                              const d = new Date(selectedTicket.preferredDate);
-                              d.setMonth(d.getMonth() + (selectedTicket.recurringMonths || 6));
-                              return formatThaiDate(d.toISOString().slice(0, 10));
-                            })()
-                          : 'พฤษภาคม 2570'}
+                        {(() => {
+                          const baseDate = selectedTicket.preferredDate
+                            ? new Date(selectedTicket.preferredDate)
+                            : new Date();
+                          baseDate.setMonth(baseDate.getMonth() + (selectedTicket.recurringMonths || 6));
+                          const nextStr = `${baseDate.getFullYear()}-${String(baseDate.getMonth() + 1).padStart(2, '0')}-${String(baseDate.getDate()).padStart(2, '0')}`;
+                          return formatThaiDate(nextStr);
+                        })()}
                       </div>
                     </div>
                     <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold text-[10px]">
@@ -4225,10 +4412,10 @@ export function TicketsTab({ project }: Props) {
                   {/* Invoice Header */}
                   <div className="flex items-start justify-between border-b border-slate-200 pb-4">
                     <div>
-                      <div className="text-orange-600 font-black text-lg tracking-wider">PLASOM SERVICE CENTER</div>
-                      <div className="text-slate-500 text-[11px] leading-tight mt-0.5">
-                        ศูนย์บริการซ่อมบำรุงและติดตั้งมาตรฐานครบวงจร<br />
-                        โทร: 02-123-4567 • เลขผู้เสียภาษี: 0105566000000
+                      <div className="text-orange-600 font-black text-lg tracking-tight">{project.name}</div>
+                      <div className="text-slate-500 text-[11px] leading-relaxed mt-0.5">
+                        สาขา: {project.branchName}<br />
+                        หมวดหมู่บริการ: {project.category}
                       </div>
                     </div>
                     <div className="text-right">
@@ -4239,7 +4426,7 @@ export function TicketsTab({ project }: Props) {
                         เลขที่: {selectedTicket.invoiceNumber || `INV-${selectedTicket.trackingCode}`}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        วันที่: {formatThaiDate(selectedTicket.preferredDate || '2026-11-24')}
+                        วันที่: {formatThaiDate(selectedTicket.preferredDate || getTodayLocalDateStr())}
                       </div>
                     </div>
                   </div>
@@ -4286,7 +4473,9 @@ export function TicketsTab({ project }: Props) {
                         <td className="py-2.5 text-slate-400">2</td>
                         <td className="py-2.5 font-medium text-slate-800">
                           ค่าอะไหล่ทดแทน / น้ำยา / สารบำรุงรักษา
-                          <div className="text-[10px] text-slate-400">เบิกศูนย์บริการมาตรฐาน Plasom</div>
+                          <div className="text-[10px] text-slate-400">
+                            ให้บริการโดย {project.name} ({project.branchName})
+                          </div>
                         </td>
                         <td className="py-2.5 text-center text-slate-600">1 ชุด</td>
                         <td className="py-2.5 text-right text-slate-600">
@@ -4413,8 +4602,8 @@ export function TicketsTab({ project }: Props) {
                     className="w-full h-[40px] px-2.5 rounded-xl bg-[#0b0f19] border border-slate-700 text-white focus:border-orange-500 cursor-pointer"
                   >
                     <option value="LINE OA">LINE OA</option>
-                    <option value="Facebook">Facebook</option>
                     <option value="Voicebot">Voicebot</option>
+                    <option value="Walk-in">หน้าร้าน / โทรศัพท์</option>
                   </select>
                 </div>
                 <div>
@@ -4484,6 +4673,41 @@ export function TicketsTab({ project }: Props) {
                   className="w-full p-3 rounded-xl bg-[#0b0f19] border border-slate-700 text-white focus:border-orange-500 focus:outline-none"
                 />
               </div>
+
+              {project.requiredFields.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-[#0b0f19]/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-orange-400 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>ข้อมูลเฉพาะอาชีพ ({project.category})</span>
+                    </span>
+                    <span className="text-[10px] text-slate-500">
+                      {project.requiredFields.length} ฟิลด์
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {project.requiredFields.map((field) => (
+                      <div key={field}>
+                        <label className="font-medium text-slate-300 block mb-1 text-[11px]">
+                          {field}
+                        </label>
+                        <input
+                          type="text"
+                          value={createDynamicExtra[field] || ''}
+                          onChange={(e) =>
+                            setCreateDynamicExtra((prev) => ({
+                              ...prev,
+                              [field]: e.target.value,
+                            }))
+                          }
+                          placeholder={`ระบุ${field}...`}
+                          className="w-full h-[38px] px-3 rounded-xl bg-[#111827] border border-slate-700 text-white placeholder:text-slate-500 focus:border-orange-500 focus:outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="font-semibold text-slate-300 block mb-1">มอบหมายช่างทันที</label>
@@ -4614,6 +4838,17 @@ export function TicketsTab({ project }: Props) {
               <button
                 type="button"
                 onClick={() => {
+                  if (!project.id.startsWith('proj-')) {
+                    const cleanPhone = editingTicket.customerPhone.replace(/[\s-]/g, '');
+                    updateProjectTicketApi(project.id, editingTicket.id, {
+                      customerName: editingTicket.customerName.trim(),
+                      ...(cleanPhone && cleanPhone !== '-' ? { customerPhone: cleanPhone } : {}),
+                      brand: editingTicket.subject.trim(),
+                      symptom: editingTicket.symptom.trim(),
+                      ...(editingTicket.address?.trim() ? { address: editingTicket.address.trim() } : {}),
+                      ...(editingTicket.preferredDate ? { preferredDate: editingTicket.preferredDate } : {}),
+                    }).catch(handleSyncError);
+                  }
                   setTickets((prev) => prev.map((t) => (t.id === editingTicket.id ? editingTicket : t)));
                   if (selectedTicket?.id === editingTicket.id) setSelectedTicket(editingTicket);
                   setEditingTicket(null);
@@ -4772,9 +5007,19 @@ export function TicketsTab({ project }: Props) {
                           <button
                             type="button"
                             onClick={() => {
+                              if (!project.id.startsWith('proj-')) {
+                                updateProjectTicketApi(project.id, job.id, {
+                                  status: 'IN_PROGRESS',
+                                }).catch(handleSyncError);
+                              }
                               setTickets((prev) =>
                                 prev.map((t) => (t.id === job.id ? { ...t, status: 'IN_PROGRESS' } : t))
                               );
+                              if (selectedTicket?.id === job.id) {
+                                setSelectedTicket((prev) =>
+                                  prev ? { ...prev, status: 'IN_PROGRESS' } : null
+                                );
+                              }
                               showToast(`ช่างกดเริ่มงาน ${job.trackingCode} แล้ว`, 'success');
                             }}
                             className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
@@ -4787,6 +5032,11 @@ export function TicketsTab({ project }: Props) {
                           <button
                             type="button"
                             onClick={() => {
+                              if (!project.id.startsWith('proj-')) {
+                                updateProjectTicketApi(project.id, job.id, {
+                                  status: 'COMPLETED',
+                                }).catch(handleSyncError);
+                              }
                               setTickets((prev) =>
                                 prev.map((t) =>
                                   t.id === job.id
@@ -4801,6 +5051,11 @@ export function TicketsTab({ project }: Props) {
                                     : t
                                 )
                               );
+                              if (selectedTicket?.id === job.id) {
+                                setSelectedTicket((prev) =>
+                                  prev ? { ...prev, status: 'COMPLETED' } : null
+                                );
+                              }
                               showToast(`ช่างปิดงานและส่งหลักฐาน ${job.trackingCode} เรียบร้อย`, 'success');
                             }}
                             className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
