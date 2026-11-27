@@ -426,7 +426,7 @@ export async function handleBotnoiEvent(
       // แอดมินบันทึกข้อความทันทีหลัง push สำเร็จ; ข้าม webhook echo ที่ตรงกับข้อความเดิม
       const messagesToStore: typeof messages = [];
       for (const message of messages) {
-        if (message.sender === MessageSender.STAFF) {
+        if (message.sender !== MessageSender.CUSTOMER) {
           const alreadyStored = await prisma.message.findFirst({
             where: {
               ticketId: attachTo.id,

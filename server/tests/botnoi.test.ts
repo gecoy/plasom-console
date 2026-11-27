@@ -355,6 +355,66 @@ test("describeShape: เก็บแค่โครงสร้าง ไม่�
   assert.ok(!JSON.stringify(shape).includes("0812345678"));
 });
 
+test("handleBotnoiEvent: webhook echo ของข้อความพนักงานไม่บันทึกซ้ำ แต่ข้อความบอทจริงยังบันทึก", async () => {
+  const staffText = "พนักงานรับเรื่องให้แล้วครับ";
+  const botText = "กรุณาแจ้งเบอร์ติดต่อเพิ่มเติมครับ";
+  const stored: any[] = [];
+  const duplicateLookups: any[] = [];
+  const restore = stubPrisma({
+    project: { findFirst: async () => ({ id: "p1" }) },
+    ticket: {
+      findFirst: async () => ({ id: "t1", status: "SUBMITTED", updatedAt: new Date() }),
+    },
+    review: { findFirst: async () => null },
+    message: {
+      findFirst: async (args: any) => {
+        duplicateLookups.push(args);
+        return args.where.text === staffText ? { id: "staff-original" } : null;
+      },
+      createMany: async (args: any) => {
+        stored.push(...args.data);
+        return { count: args.data.length };
+      },
+    },
+  });
+
+  const sendEvent = async (text: string) => {
+    const res = mockRes();
+    await handleBotnoiEvent(
+      {
+        query: { token: "test-event-token" },
+        header: () => undefined,
+        body: {
+          event_type: "msg_out",
+          bot_id: "bot-1",
+          chat_room_source: { source_id: "U-cust", source_type: "user", source_channel: "line" },
+          sender: { sender_type: "bot" },
+          messages: { type: "text", text },
+        },
+      } as any,
+      res,
+      nextSpy() as any
+    );
+    assert.equal(res.body.stored, "ticket");
+  };
+
+  try {
+    // Botnoi echo ข้อความที่พนักงานพิมพ์และบันทึกไว้แล้ว ต้องไม่สร้างกล่อง BOT ซ้ำ
+    await sendEvent(staffText);
+    assert.equal(stored.length, 0);
+    assert.equal(duplicateLookups[0].where.sender, "STAFF");
+    assert.equal(duplicateLookups[0].where.text, staffText);
+
+    // ข้อความที่บอทตอบเองและไม่มีข้อความ STAFF ตรงกัน ต้องเก็บเป็น BOT ตามปกติ
+    await sendEvent(botText);
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0].sender, "BOT");
+    assert.equal(stored[0].text, botText);
+  } finally {
+    restore();
+  }
+});
+
 test("handleBotnoiEvent: ข้อความบอทที่ไม่มี bot_id -> หาร้านจากห้องแชทที่ผูกใบงานไว้", async () => {
   let saved: any;
   const restore = stubPrisma({
@@ -366,6 +426,7 @@ test("handleBotnoiEvent: ข้อความบอทที่ไม่มี 
           : { id: "t1", status: "SUBMITTED", updatedAt: new Date() },
     },
     message: {
+      findFirst: async () => null,
       createMany: async (args: any) => {
         saved = args;
         return { count: 1 };
