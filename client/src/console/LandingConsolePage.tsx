@@ -58,11 +58,11 @@ const INDUSTRY_DEMOS: Record<DemoIndustryKey, IndustryShowcase> = {
     shopName: 'สยามแอร์แคร์ เซอร์วิส',
     branch: 'สาขาพระราม 2',
     channel: 'LINE OA',
-    trackingCode: 'PS-8821',
+    trackingCode: 'CC-20261126-A8F2',
     techName: 'ช่างเอก (ทีมแอร์อินเวอร์เตอร์)',
     userMsg: 'แอร์ Daikin 18,000 BTU มีแต่ลมไม่เย็นเลยค่ะ มีน้ำหยดตรงท่อ นัดพรุ่งนี้บ่ายได้ไหมคะ',
     botReply:
-      'รับเรื่องเรียบร้อยค่ะ น้อง AI เปิดใบงาน #PS-8821 และล็อกคิวช่างเข้าตรวจเช็กพรุ่งนี้ช่วงบ่ายให้แล้วนะคะ',
+      'รับเรื่องเรียบร้อยค่ะ น้อง AI เปิดใบงาน #CC-20261126-A8F2 และล็อกคิวช่างเข้าตรวจเช็กพรุ่งนี้ช่วงบ่ายให้แล้วนะคะ',
     extractedFields: [
       { label: 'ยี่ห้อแอร์', value: 'Daikin Inverter' },
       { label: 'ขนาด BTU', value: '18,000 BTU' },
@@ -76,11 +76,11 @@ const INDUSTRY_DEMOS: Record<DemoIndustryKey, IndustryShowcase> = {
     shopName: 'อู่เฮียสมชาย ออโต้เซอร์วิส',
     branch: 'สาขาลาดพร้าว',
     channel: 'LINE OA',
-    trackingCode: 'CAR-3041',
+    trackingCode: 'CC-20261126-K3Q1',
     techName: 'ช่างพงษ์ (ช่วงล่าง/เบรก)',
     userMsg: 'Honda Civic FE เลขไมล์ 45,200 กม. เหยียบเบรกแล้วดังเอี๊ยดล้อหน้าซ้าย ขอนัดเข้าอู่พรุ่งนี้ครับ',
     botReply:
-      'บันทึกคิวเข้าอู่รหัส #CAR-3041 เรียบร้อยครับ แจ้งทีมช่างเตรียมอะไหล่ผ้าเบรก Honda Civic รอไว้ให้แล้วครับ',
+      'บันทึกคิวเข้าอู่รหัส #CC-20261126-K3Q1 เรียบร้อยครับ แจ้งทีมช่างเตรียมอะไหล่ผ้าเบรก Honda Civic รอไว้ให้แล้วครับ',
     extractedFields: [
       { label: 'รุ่นรถยนต์', value: 'Honda Civic FE' },
       { label: 'เลขไมล์', value: '45,200 กม.' },
@@ -94,11 +94,11 @@ const INDUSTRY_DEMOS: Record<DemoIndustryKey, IndustryShowcase> = {
     shopName: 'ไอฟิกซ์ สมาร์ทโฟนแล็บ',
     branch: 'สาขาสยาม',
     channel: 'AI Voicebot',
-    trackingCode: 'IT-5092',
+    trackingCode: 'CC-20261126-M5T9',
     techName: 'ช่างนนท์ (ช่างบอร์ด/จอแท้)',
     userMsg: '“หน้าจอ iPhone 15 Pro ตกแตกทัชสกรีนไม่ได้ เครื่องหมดประกันแล้ว อยากเข้าไปซ่อมเย็นนี้เลยครับ”',
     botReply:
-      'ระบบ Voicebot ถอดเสียงสนทนาและเปิดใบงานด่วน #IT-5092 ล็อกอะไหล่จอแท้รอรับเครื่องช่วง 17:30 น. ค่ะ',
+      'ระบบ Voicebot ถอดเสียงสนทนาและเปิดใบงานด่วน #CC-20261126-M5T9 ล็อกอะไหล่จอแท้รอรับเครื่องช่วง 17:30 น. ค่ะ',
     extractedFields: [
       { label: 'รุ่นอุปกรณ์', value: 'iPhone 15 Pro' },
       { label: 'อาการเสีย', value: 'จอแตก / ทัชไม่ได้' },
@@ -111,12 +111,12 @@ const INDUSTRY_DEMOS: Record<DemoIndustryKey, IndustryShowcase> = {
     tabLabel: 'เฟอร์นิเจอร์ & โซฟา',
     shopName: 'โมเดิร์นคราฟต์ สตูดิโอ',
     branch: 'สำนักงานใหญ่ บางนา',
-    channel: 'Messenger',
-    trackingCode: 'SOF-1120',
+    channel: 'LINE OA',
+    trackingCode: 'CC-20261126-S7D4',
     techName: 'ช่างเดช (ทีมหุ้มหนังแท้)',
     userMsg: 'ต้องการหุ้มหนังโซฟาตัว L ใหม่ครับ หนังเดิมลอกตรงเบาะนั่ง อยู่หมู่บ้านย่านบางนาครับ',
     botReply:
-      'เปิดใบงานประเมินหน้างาน #SOF-1120 เรียบร้อยค่ะ ทีมช่างจะนำตัวอย่างเฉดสีหนังเข้าไปให้เลือกตามวันนัดนะคะ',
+      'เปิดใบงานประเมินหน้างาน #CC-20261126-S7D4 เรียบร้อยค่ะ ทีมช่างจะนำตัวอย่างเฉดสีหนังเข้าไปให้เลือกตามวันนัดนะคะ',
     extractedFields: [
       { label: 'ชนิดเฟอร์นิเจอร์', value: 'โซฟาเข้ามุมตัว L' },
       { label: 'วัสดุที่ต้องการ', value: 'หุ้มหนังเกรดพรีเมียม' },
@@ -131,7 +131,7 @@ const MARQUEE_BADGES = [
   { icon: Car, text: 'อู่ซ่อมรถยนต์ & ศูนย์เช็กระยะ' },
   { icon: Smartphone, text: 'ศูนย์ซ่อมมือถือ คอมพิวเตอร์ & IT' },
   { icon: Armchair, text: 'ร้านซ่อมโซฟา & บิ้วอินเฟอร์นิเจอร์' },
-  { icon: Bot, text: 'เชื่อม LINE OA & Messenger อัตโนมัติ' },
+  { icon: Bot, text: 'เชื่อม LINE Official Account & Botnoi AI' },
   { icon: Mic, text: 'AI Voicebot รับสายโทรศัพท์ 24 ชม.' },
   { icon: Webhook, text: 'Dynamic JSON Webhook ไม่ต้องแก้ DB' },
 ];
@@ -139,12 +139,12 @@ const MARQUEE_BADGES = [
 export function LandingConsolePage() {
   const { user, logout } = useAuth();
   const [activeIndustry, setActiveIndustry] = useState<DemoIndustryKey>('air');
-  const [activeNav, setActiveNav] = useState<'hero' | 'demo' | 'flow' | 'features'>('hero');
+  const [activeNav, setActiveNav] = useState<'hero' | 'demo' | 'flow' | 'features' | 'start'>('hero');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const currentDemo = INDUSTRY_DEMOS[activeIndustry];
 
-  const scrollToSection = (id: string, key: 'hero' | 'demo' | 'flow' | 'features') => {
+  const scrollToSection = (id: string, key: 'hero' | 'demo' | 'flow' | 'features' | 'start') => {
     setActiveNav(key);
     setMobileMenuOpen(false);
     if (id === 'top') {
@@ -192,6 +192,7 @@ export function LandingConsolePage() {
                 { key: 'demo' as const, id: 'live-demo', label: 'ทดลองสลับอาชีพ' },
                 { key: 'flow' as const, id: 'ai-flow', label: 'การทำงาน AI' },
                 { key: 'features' as const, id: 'features', label: 'ฟีเจอร์หลัก' },
+                { key: 'start' as const, id: 'get-started', label: 'เริ่มใช้งาน' },
               ].map((nav) => {
                 const active = activeNav === nav.key;
                 return (
@@ -274,6 +275,7 @@ export function LandingConsolePage() {
                   { key: 'demo' as const, id: 'live-demo', label: 'ทดลองสลับอาชีพ' },
                   { key: 'flow' as const, id: 'ai-flow', label: 'การทำงาน AI' },
                   { key: 'features' as const, id: 'features', label: 'ฟีเจอร์หลัก' },
+                  { key: 'start' as const, id: 'get-started', label: 'เริ่มใช้งาน' },
                 ].map((nav) => (
                   <button
                     key={nav.key}
@@ -397,7 +399,7 @@ export function LandingConsolePage() {
               { value: 24, suffix: '/7', label: 'AI รับแจ้งซ่อมอัตโนมัติ' },
               { value: 3, prefix: '< ', suffix: ' วินาที', label: 'เปิด Ticket เข้าหน้าร้าน' },
               { value: 100, suffix: '%', label: 'ตั้งฟิลด์ข้อมูลอิสระตามอาชีพ' },
-              { value: 3, suffix: ' ช่องทาง', label: 'LINE • Messenger • Voice' },
+              { value: 2, suffix: ' ช่องทางหลัก', label: 'LINE OA • AI Voicebot' },
             ].map((item) => (
               <div
                 key={item.label}
@@ -454,7 +456,7 @@ export function LandingConsolePage() {
                   <span className="w-3 h-3 rounded-full bg-amber-400/80" />
                   <span className="w-3 h-3 rounded-full bg-emerald-400/80" />
                   <span className="ml-2 text-xs font-mono text-slate-400 truncate max-w-[200px] sm:max-w-none">
-                    plasom-console.app/projects/{currentDemo.key}-workspace
+                    plasom-console.vercel.app/projects/{currentDemo.key}-workspace
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -707,10 +709,10 @@ export function LandingConsolePage() {
                     color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
                   },
                   {
-                    title: 'Facebook Messenger',
-                    sub: 'รับลูกค้าจากเพจร้านอัตโนมัติ',
-                    badge: 'Social',
-                    color: 'text-blue-400 bg-blue-500/10 border-blue-500/25',
+                    title: 'Botnoi Event Stream',
+                    sub: 'ดักจับแชทสดเรียลไทม์ & ส่งปุ่มให้ดาว CSAT อัตโนมัติ',
+                    badge: 'Live',
+                    color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/25',
                   },
                   {
                     title: 'Botnoi AI Voicebot',
@@ -871,18 +873,18 @@ export function LandingConsolePage() {
                   ดูประวัติแชทคู่กับใบงานทันที
                 </h3>
                 <p className="mt-2.5 text-sm text-slate-400 leading-relaxed">
-                  ตรวจสอบบทสนทนาจาก LINE OA, Messenger และสายโทร Voicebot
+                  ตรวจสอบบทสนทนาจาก LINE OA และสายสนทนา AI Voicebot
                   ย้อนหลังได้ครบถ้วนเคียงคู่รหัสใบงาน ไม่ตกหล่นรายละเอียดสำคัญหน้างาน
                 </p>
 
                 <div className="mt-5 pt-4 border-t border-slate-800/80 space-y-2 text-xs">
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800">
                     <span className="text-slate-300">LINE OA • คุณพิมพ์ชนก</span>
-                    <span className="font-mono text-emerald-400 font-semibold">#PS-8821</span>
+                    <span className="font-mono text-emerald-400 font-semibold">#CC-20261126-A8F2</span>
                   </div>
                   <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800">
                     <span className="text-slate-300">Voicebot • คุณภาคิน</span>
-                    <span className="font-mono text-emerald-400 font-semibold">#PS-8822</span>
+                    <span className="font-mono text-emerald-400 font-semibold">#CC-20261126-V2B6</span>
                   </div>
                 </div>
               </Tilt3DCard>
@@ -958,6 +960,72 @@ export function LandingConsolePage() {
             </div>
           </GlowingCard>
         </ScrollReveal>
+      </section>
+
+      {/* =====================================================================
+       * เริ่มต้นใช้งานจริงใน 3 ขั้นตอน (ลำดับการทำงานจริงของแพลตฟอร์ม)
+       * ===================================================================== */}
+      <section id="get-started" className="scroll-mt-24 max-w-6xl mx-auto px-4 sm:px-6 pb-20">
+        <ScrollReveal className="text-center max-w-2xl mx-auto mb-12">
+          <span className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-semibold">
+            Getting Started
+          </span>
+          <h2 className="mt-2 text-2xl sm:text-3xl md:text-4xl font-bold text-white">
+            เริ่มต้นใช้งานจริงใน 3 ขั้นตอน
+          </h2>
+          <p className="mt-3 text-sm sm:text-base text-slate-400">
+            ตั้งร้าน ผูกบอท แล้วรับใบงานจาก LINE ได้ทันที ไม่ต้องเขียนโค้ดเพิ่ม
+          </p>
+        </ScrollReveal>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+          {[
+            {
+              step: '01',
+              icon: Layers,
+              color: 'text-orange-400 bg-orange-500/15 border-orange-500/30',
+              title: 'สร้างร้านค้าและตั้งคำถาม AI',
+              desc: 'สร้างโปรเจกต์ร้าน เลือกหรือพิมพ์หมวดอาชีพของคุณเอง แล้วกำหนดหัวข้อที่ต้องการให้ AI ถามลูกค้า เช่น รุ่นอุปกรณ์ อาการเสีย ที่อยู่หน้างาน',
+            },
+            {
+              step: '02',
+              icon: Webhook,
+              color: 'text-cyan-400 bg-cyan-500/15 border-cyan-500/30',
+              title: 'ผูกบอทกับ Botnoi Studio',
+              desc: 'ใส่รหัส Chatbot ID ของร้าน แล้วนำลิงก์ Webhook และรหัสลับ x-webhook-secret ไปตั้งเป็น API Object ใน Botnoi Studio ให้บอทเปิดใบงานได้เอง',
+            },
+            {
+              step: '03',
+              icon: ClipboardCheck,
+              color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+              title: 'รับใบงาน จ่ายงานช่าง ปิดงาน',
+              desc: 'ใบงานพร้อมแชทสดเข้าคอนโซลอัตโนมัติ มอบหมายช่างได้ในคลิกเดียว และเมื่อกดปิดงาน ระบบส่งปุ่มให้ดาว 1–5 ดาวเข้า LINE ลูกค้าให้เอง',
+            },
+          ].map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <ScrollReveal key={item.step} delay={index * 100}>
+                <div className="h-full p-6 sm:p-7 rounded-2xl bg-[#0b101e]/90 border border-slate-800/90">
+                  <div className="flex items-center justify-between mb-5">
+                    <div className={`w-11 h-11 rounded-xl border flex items-center justify-center ${item.color}`}>
+                      <Icon className="w-5 h-5" />
+                    </div>
+                    <span className="font-mono text-xs text-slate-500 font-bold">ขั้นตอน {item.step}</span>
+                  </div>
+                  <h3 className="font-bold text-white text-lg">{item.title}</h3>
+                  <p className="mt-2.5 text-sm text-slate-400 leading-relaxed">{item.desc}</p>
+                </div>
+              </ScrollReveal>
+            );
+          })}
+        </div>
+
+        <div className="mt-10 flex justify-center">
+          <ShimmerLink to={user ? '/projects/new' : '/login'} className="px-7 py-3.5 text-sm sm:text-base">
+            <span>{user ? 'สร้างร้านค้าแรกของคุณ' : 'สมัครและเริ่มขั้นตอนที่ 1'}</span>
+            <ArrowRight className="w-4 h-4" />
+          </ShimmerLink>
+        </div>
       </section>
 
       {/* Footer padded generously so floating corner widgets never overlap */}
