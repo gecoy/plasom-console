@@ -570,8 +570,8 @@ async function handleBotnoiTicket(
     const detectedService = /ล้าง|ทำความสะอาด/.test(cleanInfo)
       ? "CLEANING"
       : /ติดตั้ง|ย้ายแอร์|ย้ายจุด|ติดแอร์/.test(cleanInfo)
-      ? "INSTALLATION"
-      : "REPAIR";
+        ? "INSTALLATION"
+        : "REPAIR";
 
     // ดึงรหัส CC-YYYYMMDD-XXXX ที่บอทแนบมาใน <date> หรือ <ticket> หรือ <info>
     const combinedRaw = `${botTicketCode || ""} ${date || ""} ${info || ""}`;
@@ -610,17 +610,21 @@ async function handleBotnoiTicket(
     // ===========================
     // ด่านที่ 2: ป้องกัน AI เผลอสุ่มรหัสใหม่แล้วยิงซ้ำตอนลูกค้าพูดขอบคุณ/บอกลา (ภายใน 2 นาที)
     // ===========================
+    // ด่านที่ 2: กันยิงซ้ำเฉพาะกรณีเป็นเบอร์เดิม + เครื่องเดิม + อาการเดิม ภายใน 2 นาที
     const recentDuplicate = await prisma.ticket.findFirst({
       where: {
         projectId: projectId ?? null,
         service: detectedService,
+        brand,
+        symptom,
         createdAt: { gte: twoMinutesAgo },
         ...(hasRealPhone
           ? { customerPhone: cleanPhone }
-          : { customerName: cleanName, symptom }),
+          : { customerName: cleanName }),
       },
       orderBy: { createdAt: "desc" },
     });
+
 
     if (recentDuplicate) {
       res.status(200).json({
@@ -635,8 +639,8 @@ async function handleBotnoiTicket(
     // ตัดรหัส CC-... ออกจากข้อความวันที่ เพื่อให้เหลือแต่วันที่สะอาดๆ
     const rawDateOnly = !isPlaceholder(date)
       ? String(date)
-          .replace(/\|?\s*(CC-[0-9]{8}-[A-Z0-9]{4,}|TCK-[A-Z0-9-]+)/gi, "")
-          .trim()
+        .replace(/\|?\s*(CC-[0-9]{8}-[A-Z0-9]{4,}|TCK-[A-Z0-9-]+)/gi, "")
+        .trim()
       : "";
 
     const cleanDateText = rawDateOnly || "ตามนัดหมายในแชท";
