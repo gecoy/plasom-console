@@ -423,17 +423,39 @@ export async function handleBotnoiEvent(
         : null;
 
     if (attachTo) {
-      await prisma.message.createMany({
-        data: messages.map((m) => ({
-          ticketId: attachTo.id,
-          text: m.text,
-          sender: m.sender,
-          fromStaff: m.sender === MessageSender.STAFF,
-          botnoiMid: m.mid,
-          createdAt: m.sentAt,
-        })),
-        skipDuplicates: true,
-      });
+      // แอดมินบันทึกข้อความทันทีหลัง push สำเร็จ; ข้าม webhook echo ที่ตรงกับข้อความเดิม
+      const messagesToStore: typeof messages = [];
+      for (const message of messages) {
+        if (message.sender === MessageSender.STAFF) {
+          const alreadyStored = await prisma.message.findFirst({
+            where: {
+              ticketId: attachTo.id,
+              sender: MessageSender.STAFF,
+              text: message.text,
+              createdAt: {
+                gte: new Date(message.sentAt.getTime() - 60_000),
+                lte: new Date(message.sentAt.getTime() + 60_000),
+              },
+            },
+            select: { id: true },
+          });
+          if (alreadyStored) continue;
+        }
+        messagesToStore.push(message);
+      }
+      if (messagesToStore.length > 0) {
+        await prisma.message.createMany({
+          data: messagesToStore.map((m) => ({
+            ticketId: attachTo.id,
+            text: m.text,
+            sender: m.sender,
+            fromStaff: m.sender === MessageSender.STAFF,
+            botnoiMid: m.mid,
+            createdAt: m.sentAt,
+          })),
+          skipDuplicates: true,
+        });
+      }
     } else {
       await prisma.botnoiChatEvent.createMany({
         data: messages.map((m) => ({
