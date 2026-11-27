@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, RefreshCw, Star } from 'lucide-react';
+import { Download, Loader2, RefreshCw, Star } from 'lucide-react';
 import { MOCK_REVIEWS, ProjectItem, SatisfactionItem } from '../mockConsoleData';
 import { fetchProjectReviewsApi, readCachedReviews, createSimulatedReviewApi } from '../consoleApi';
 import {
@@ -43,6 +43,7 @@ function SatisfactionTabContent({ project }: Props) {
   const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(() => (isDemo ? new Date() : null));
   const [starFilter, setStarFilter] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const requestId = useRef(0);
 
   const loadReviews = useCallback(
@@ -87,10 +88,33 @@ function SatisfactionTabContent({ project }: Props) {
 
   const avgScore = averageRating(reviews);
   const distribution = ratingDistribution(reviews);
-  const visibleReviews = filterReviewsByRating(reviews, starFilter);
+  const searchedReviews = reviews.filter((review) => {
+    const q = searchQuery.trim().toLocaleLowerCase();
+    if (!q) return true;
+    return [review.customerName, review.ticketCode, review.comment]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(q));
+  });
+  const visibleReviews = filterReviewsByRating(searchedReviews, starFilter);
   const csatOn = project.features.collectCsat;
 
   const toggleStar = (star: number) => setStarFilter((cur) => (cur === star ? null : star));
+
+  const exportReviewsCsv = () => {
+    const escapeCsv = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"';
+    const rows = [
+      ['ชื่อลูกค้า', 'รหัสใบงาน', 'คะแนน', 'ความคิดเห็น', 'วันที่'],
+      ...reviews.map((review) => [review.customerName, review.ticketCode, review.rating, review.comment, review.createdAt]),
+    ];
+    const csv = '\uFEFF' + rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `plasom-reviews-${project.id}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
 
   const [simulating, setSimulating] = useState(false);
 
@@ -128,10 +152,10 @@ function SatisfactionTabContent({ project }: Props) {
                 type="button"
                 onClick={handleSimulateReview}
                 disabled={busy || simulating}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-500 text-slate-950 text-sm font-semibold hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-sm font-medium hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                <Star className="w-4 h-4 fill-slate-950" />
-                {simulating ? 'กำลังบันทึก...' : 'จำลองรีวิว 5 ดาว'}
+                <Star className="w-4 h-4 text-amber-400" />
+                {simulating ? 'กำลังบันทึก...' : 'สร้างรีวิวทดสอบ'}
               </button>
             )}
             <button
@@ -250,6 +274,24 @@ function SatisfactionTabContent({ project }: Props) {
 
       <div className="bg-[#111827] rounded-2xl border border-slate-800">
         <div className="p-4 border-b border-slate-800 flex flex-wrap items-center gap-2">
+          <label className="flex-1 min-w-[180px]">
+            <span className="sr-only">ค้นหาชื่อลูกค้า รหัสใบงาน หรือความคิดเห็น</span>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ค้นหาชื่อลูกค้า / รหัสใบงาน / ความคิดเห็น..."
+              className="w-full px-3 py-2 rounded-lg bg-[#0b0f19] border border-slate-700 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={exportReviewsCsv}
+            disabled={reviews.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-200 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" /> Export CSV
+          </button>
           <span className="text-xs text-slate-400 mr-1">กรองคำติชม:</span>
           {[null, 5, 4, 3, 2, 1].map((star) => {
             const active = starFilter === star;

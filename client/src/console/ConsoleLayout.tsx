@@ -35,6 +35,7 @@ import {
 import {
   fetchMyProjects,
   fetchProjectSummaryApi,
+  fetchProjectThreadsApi,
 } from './consoleApi';
 import { TicketsTab } from './tabs/TicketsTab';
 import { ConversationsTab } from './tabs/ConversationsTab';
@@ -148,9 +149,20 @@ export function ConsoleLayout() {
       setLiveCounts(null);
       setBadgeErrorProjectId(null);
       try {
-        const summary = await fetchProjectSummaryApi(currentProject.id);
+        const [summary, threads] = await Promise.all([
+          fetchProjectSummaryApi(currentProject.id),
+          fetchProjectThreadsApi(currentProject.id),
+        ]);
         if (!cancelled) {
-          setLiveCounts({ ...summary, projectId: currentProject.id });
+          setLiveCounts({
+            projectId: currentProject.id,
+            tickets: summary?.tickets?.total ?? 0,
+            threads: threads.length,
+            techs: summary?.technicians?.total ?? 0,
+            avgCsat: (summary?.reviews?.averageRating ?? 0) > 0
+              ? Number(summary.reviews.averageRating).toFixed(1)
+              : undefined,
+          });
         }
       } catch (error) {
         if (!cancelled) {
@@ -302,6 +314,9 @@ export function ConsoleLayout() {
       badge: techsCount,
     },
   ];
+
+  const hasBoundChatbot = Boolean(currentProject.botnoiBotId?.trim()) &&
+    !/^(auto-|bn-)/i.test(currentProject.botnoiBotId.trim());
 
   const webhookUrl = `${window.location.origin}/api/webhooks/${currentProject.id}`;
 
@@ -526,21 +541,21 @@ export function ConsoleLayout() {
             <div className="p-3.5 rounded-2xl bg-[#070b14] border border-slate-800/90 space-y-2.5">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="font-semibold text-slate-300">สถานะ AI ประจำสาขา</span>
-                <span className="inline-flex items-center gap-1 text-emerald-400 font-mono">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  LIVE
+                <span className={`inline-flex items-center gap-1 font-mono ${hasBoundChatbot ? "text-emerald-400" : "text-slate-500"}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${hasBoundChatbot ? "bg-emerald-400 animate-pulse" : "bg-slate-600"}`} />
+                  {hasBoundChatbot ? "LIVE" : "NOT LINKED"}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-[11px]">
                 <div
-                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${currentProject.chatbotConnected
+                  className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1.5 ${hasBoundChatbot
                       ? 'bg-blue-500/10 border-blue-500/25 text-blue-300'
                       : 'bg-slate-900 border-slate-800 text-slate-500'
                     }`}
                 >
                   <Bot className="w-3.5 h-3.5 shrink-0" />
                   <span className="truncate">
-                    {currentProject.chatbotConnected ? 'Chat ผูกแล้ว' : 'ยังไม่ผูก'}
+                    {hasBoundChatbot ? 'Chat ผูกแล้ว' : 'ยังไม่ผูก'}
                   </span>
                 </div>
                 <div

@@ -1,9 +1,12 @@
 import crypto from "crypto";
 import { Request, Response, NextFunction } from "express";
+import type { AuthRequest } from "../middleware/auth";
 import { MessageSender, TicketStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import {
   buildCommentRequestMessage,
+  isBotnoiConfigured,
+  listMyBots,
   pushMessages,
   REVIEW_POSTBACK_PREFIX,
   REVIEW_SKIP_COMMENT_PREFIX,
@@ -462,6 +465,98 @@ export async function handleBotnoiEvent(
       reviewSaved,
       ...(commentResult ? { reviewComment: commentResult } : {}),
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** GET /api/botnoi/bots — ตรวจสถานะการตั้งค่าและดึงรายชื่อบอทของบัญชี */
+export async function getBotnoiBots(
+  _req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    if (!isBotnoiConfigured()) {
+      res.status(503).json({ success: false, configured: false, error: "ยังไม่ได้ตั้งค่า Botnoi API" });
+      return;
+    }
+    const bots = await listMyBots();
+    res.json({ success: true, configured: true, data: bots });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** POST /api/botnoi/projects/:projectId/reply — ส่งข้อความแอดมินไปยังห้องลูกค้า */
+export async function sendBotnoiProjectReply(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const userId = req.user?.id;
+    const projectId = String(req.params.projectId || "");
+    const body = req.body as { ticketId?: unknown; text?: unknown } | undefined;
+    const ticketId = typeof body?.ticketId === "string" ? body.ticketId.trim() : "";
+    const text = typeof body?.text === "string" ? body.text.trim() : "";
+
+    if (!userId) {
+      res.status(401).json({ success: false, error: "กรุณาเข้าสู่ระบบก่อน" });
+      return;
+    }
+    if (!ticketId || !text || text.length > 1000) {
+      res.status(400).json({ success: false, error: "กรุณาระบุ ticketId และข้อความไม่เกิน 1,000 ตัวอักษร" });
+      return;
+    }
+    if (!isBotnoiConfigured()) {
+      res.status(503).json({ success: false, error: "ยังไม่ได้ตั้งค่า Botnoi API" });
+      return;
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, ownerId: userId },
+      select: { id: true, botnoiBotId: true },
+    });
+    if (!project) {
+      res.status(404).json({ success: false, error: "ไม่พบโปรเจกต์หรือคุณไม่มีสิทธิ์เข้าถึง" });
+      return;
+    }
+    if (!project.botnoiBotId?.trim()) {
+      res.status(400).json({ success: false, error: "โปรเจกต์นี้ยังไม่ได้ผูก Botnoi Bot" });
+      return;
+    }
+
+    const ticket = await prisma.ticket.findFirst({
+      where: { id: ticketId, projectId, botnoiSourceId: { not: null } },
+      select: { id: true, botnoiSourceId: true, botnoiChannel: true },
+    });
+    if (!ticket?.botnoiSourceId) {
+      res.status(404).json({ success: false, error: "ไม่พบห้องแชทลูกค้าที่ผูกกับใบงานนี้" });
+      return;
+    }
+
+    await pushMessages(
+      project.botnoiBotId,
+      {
+        source_channel: ticket.botnoiChannel || "line",
+        source_type: "user",
+        source_id: ticket.botnoiSourceId,
+      },
+      [{ type: "text", text }]
+    );
+
+    const message = await prisma.message.create({
+      data: {
+        ticketId: ticket.id,
+        text,
+        sender: MessageSender.STAFF,
+        fromStaff: true,
+        userId,
+      },
+    });
+
+    res.json({ success: true, data: message });
   } catch (err) {
     next(err);
   }

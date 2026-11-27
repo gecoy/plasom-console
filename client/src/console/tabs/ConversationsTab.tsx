@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, Loader2, MessageSquare, RefreshCw, Send } from 'lucide-react';
-import { ChatThread, MOCK_THREADS, ProjectItem } from '../mockConsoleData';
-import { fetchProjectConversationsApi, readCachedThreads } from '../consoleApi';
+import { MOCK_THREADS, ProjectItem } from '../mockConsoleData';
+import { fetchProjectConversationsApi, readCachedThreads, sendProjectTicketReplyApi, getApiErrorMessage, type ConsoleChatThread } from '../consoleApi';
 import {
   avatarInitial,
   belongsToProject,
-  filterThreadsByCustomer,
   formatClock,
   isDemoProject,
 } from './tabUtils';
@@ -34,7 +33,7 @@ function ConversationsTabContent({ project }: Props) {
     ? MOCK_THREADS.filter((t) => belongsToProject(t.projectId, project.id))
     : readCachedThreads(project.id);
 
-  const [threads, setThreads] = useState<ChatThread[]>(initialThreads);
+  const [threads, setThreads] = useState<ConsoleChatThread[]>(initialThreads);
   const [loading, setLoading] = useState(!isDemo && initialThreads.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -42,10 +41,13 @@ function ConversationsTabContent({ project }: Props) {
     isDemo || initialThreads.length > 0 ? new Date() : null
   );
   const [query, setQuery] = useState('');
+  const [threadFilter, setThreadFilter] = useState<'all' | 'pending' | 'opened'>('all');
   const [selectedId, setSelectedId] = useState<string>(initialThreads[0]?.id || '');
 
   const [staffDrafts, setStaffDrafts] = useState<Record<string, StaffDraft[]>>({});
   const [replyText, setReplyText] = useState('');
+  const [replyError, setReplyError] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
   const [copiedCode, setCopiedCode] = useState('');
   const requestId = useRef(0);
   const messagesBoxRef = useRef<HTMLDivElement>(null);
@@ -123,7 +125,15 @@ function ConversationsTabContent({ project }: Props) {
     };
   }, [isDemo, loadThreads]);
 
-  const visibleThreads = filterThreadsByCustomer(threads, query);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const searchedThreads = threads.filter((thread) =>
+    !normalizedQuery || thread.customerName.toLocaleLowerCase().includes(normalizedQuery)
+  );
+  const visibleThreads = searchedThreads.filter((thread) => {
+    if (threadFilter === 'pending') return Boolean(thread.pending) || !thread.openedTicketCode;
+    if (threadFilter === 'opened') return Boolean(thread.openedTicketCode) && !thread.pending;
+    return true;
+  });
   const activeThread = visibleThreads.find((t) => t.id === selectedId) || visibleThreads[0];
   const activeDrafts = activeThread ? staffDrafts[activeThread.id] || [] : [];
 
@@ -145,9 +155,33 @@ function ConversationsTabContent({ project }: Props) {
     if (nearBottom) box.scrollTop = box.scrollHeight;
   }, [activeThread?.id, activeMessageCount]);
 
-  const sendReply = () => {
+  const sendReply = async () => {
     const text = replyText.trim();
-    if (!text || !activeThread) return;
+    if (!text || !activeThread || sendingReply || activeThread.pending) return;
+    setReplyError('');
+
+    if (!isDemo) {
+      const ticketId = activeThread.id.replace(/^th-/, '');
+      setSendingReply(true);
+      try {
+        await sendProjectTicketReplyApi(project.id, ticketId, text);
+        setReplyText('');
+        try {
+          const result = await fetchProjectConversationsApi(project.id);
+          versionRef.current = result.version;
+          if (result.changed) setThreads(result.threads);
+          setLastUpdated(new Date());
+        } catch {
+          setReplyError('ส่งข้อความแล้ว แต่โหลดประวัติแชทใหม่ไม่สำเร็จ กรุณากดรีเฟรช');
+        }
+      } catch (err) {
+        setReplyError(getApiErrorMessage(err, 'ส่งข้อความไม่สำเร็จ กรุณาตรวจสอบการผูก Botnoi และลองอีกครั้ง'));
+      } finally {
+        setSendingReply(false);
+      }
+      return;
+    }
+
     setStaffDrafts((prev) => ({
       ...prev,
       [activeThread.id]: [...(prev[activeThread.id] || []), { text, time: formatClock(new Date()) }],
@@ -294,8 +328,25 @@ function ConversationsTabContent({ project }: Props) {
                   </button>
                 )}
               </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {([
+                  ['all', 'ทั้งหมด'],
+                  ['pending', 'กำลังคุย · ยังไม่เปิดใบงาน'],
+                  ['opened', 'เปิดใบงานแล้ว'],
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setThreadFilter(value)}
+                    aria-pressed={threadFilter === value}
+                    className={`px-2.5 py-1 rounded-full border text-[10px] font-medium transition-colors cursor-pointer ${threadFilter === value ? 'bg-orange-500/15 border-orange-500/40 text-orange-300' : 'border-slate-700 text-slate-400 hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <div className="mt-2 text-[11px] text-slate-500">
-                {query ? `พบ ${visibleThreads.length} จาก ${threads.length} ห้องแชท` : `ทั้งหมด ${threads.length} ห้องแชท`}
+                {query || threadFilter !== 'all' ? `พบ ${visibleThreads.length} จาก ${threads.length} ห้องแชท` : `ทั้งหมด ${threads.length} ห้องแชท`}
               </div>
             </div>
 
@@ -379,16 +430,17 @@ function ConversationsTabContent({ project }: Props) {
 
                 <div ref={messagesBoxRef} className="flex-1 overflow-y-auto max-h-[440px] p-6 space-y-4">
                   {activeThread.messages.map((m, idx) => {
-                    const isBot = m.sender === 'BOT';
                     return (
-                      <div key={idx} className={`flex flex-col ${isBot ? 'items-end' : 'items-start'}`}>
+                      <div key={idx} className={`flex flex-col ${m.sender === 'USER' ? 'items-start' : 'items-end'}`}>
                         <span className="text-[11px] text-slate-500 mb-1 px-1">
-                          {isBot ? 'บอท' : activeThread.customerName}
+                          {m.sender === 'STAFF' ? 'แอดมิน (STAFF)' : m.sender === 'BOT' ? 'บอท' : activeThread.customerName}
                         </span>
                         <div
-                          className={`max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isBot
+                          className={`max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${m.sender === 'BOT'
                             ? 'bg-orange-500 text-white rounded-br-sm'
-                            : 'bg-[#111827] border border-slate-700 text-slate-100 rounded-bl-sm'
+                            : m.sender === 'STAFF'
+                              ? 'bg-sky-600 text-white rounded-br-sm'
+                              : 'bg-[#111827] border border-slate-700 text-slate-100 rounded-bl-sm'
                             }`}
                         >
                           <div className="whitespace-pre-wrap break-words">{m.text}</div>
@@ -424,7 +476,8 @@ function ConversationsTabContent({ project }: Props) {
                       id="staff-reply"
                       rows={1}
                       value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
+                      disabled={Boolean(activeThread.pending) || sendingReply}
+                      onChange={(e) => { setReplyText(e.target.value); setReplyError(''); }}
                       onKeyDown={(e) => {
                         // Enter = ส่ง, Shift+Enter = ขึ้นบรรทัดใหม่ (ไม่ส่งตอนกำลังพิมพ์ภาษาไทยด้วย IME)
                         if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -433,19 +486,24 @@ function ConversationsTabContent({ project }: Props) {
                         }
                       }}
                       maxLength={1000}
-                      placeholder="พิมพ์ข้อความตอบกลับในนามแอดมิน..."
+                      placeholder={activeThread.pending ? "ตอบกลับได้เมื่อลูกค้าเปิดใบงานแล้ว" : "พิมพ์ข้อความตอบกลับในนามแอดมิน..."}
                       className="flex-1 resize-none px-3 py-2 rounded-lg bg-[#0b0f19] border border-slate-700 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500"
                     />
                     <button
                       type="submit"
-                      disabled={!replyText.trim()}
+                      disabled={!replyText.trim() || Boolean(activeThread.pending) || sendingReply}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 text-white text-sm font-medium hover:bg-sky-500 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <Send className="w-4 h-4" /> ส่ง
+                      <Send className="w-4 h-4" /> {sendingReply ? 'กำลังส่ง...' : 'ส่ง'}
                     </button>
                   </div>
+                  {replyError && <p role="alert" className="text-xs text-rose-400">{replyError}</p>}
                   <p className="text-[11px] text-slate-500">
-                    โหมดจำลอง: ข้อความแสดงเฉพาะหน้านี้ ยังไม่ส่งถึงลูกค้าและไม่บันทึกลงฐานข้อมูล
+                    {activeThread.pending
+                      ? 'ห้องนี้ยังไม่มีใบงาน จึงยังตอบกลับลูกค้าจาก Console ไม่ได้'
+                      : isDemo
+                        ? 'โหมดตัวอย่าง: ข้อความแสดงเฉพาะหน้านี้ ยังไม่ส่งถึงลูกค้าจริง'
+                        : 'ข้อความจะถูกส่งถึงลูกค้าผ่าน Botnoi และบันทึกเป็นข้อความจาก STAFF'}
                   </p>
                 </form>
               </>

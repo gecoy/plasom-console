@@ -7,6 +7,16 @@ import type {
   SatisfactionItem,
 } from './mockConsoleData';
 
+export interface ConsoleChatMessage {
+  sender: 'USER' | 'BOT' | 'STAFF';
+  text: string;
+  time: string;
+}
+
+export type ConsoleChatThread = Omit<ChatThread, 'messages'> & {
+  messages: ConsoleChatMessage[];
+};
+
 export interface CreateProjectPayload {
   name: string;
   category: string;
@@ -76,8 +86,8 @@ export function readCachedTechnicians(projectId: string): any[] {
   return readCache<any[]>(`plasom_techs_cache_${projectId}`, []);
 }
 
-export function readCachedThreads(projectId: string): ChatThread[] {
-  return readCache<ChatThread[]>(`plasom_threads_cache_${projectId}`, []);
+export function readCachedThreads(projectId: string): ConsoleChatThread[] {
+  return readCache<ConsoleChatThread[]>(`plasom_threads_cache_${projectId}`, []);
 }
 
 export function readCachedReviews(projectId: string): SatisfactionItem[] {
@@ -281,16 +291,16 @@ export async function fetchTicketMessagesApi(projectId: string, ticketId: string
   return [];
 }
 
-function mapTicketToThread(projectId: string, t: any, msgs: any[]): ChatThread {
+function mapTicketToThread(projectId: string, t: any, msgs: any[]): ConsoleChatThread {
   const extra = (
     t.extraFields && typeof t.extraFields === 'object' ? t.extraFields : {}
   ) as Record<string, any>;
   const channel = (extra._channel || extra.channel || 'LINE OA') as ChatThread['channel'];
 
-  const mappedMessages: ChatThread['messages'] =
+  const mappedMessages: ConsoleChatMessage[] =
     msgs.length > 0
       ? msgs.map((m: any) => ({
-          sender: m.sender === 'BOT' || m.sender === 'STAFF' || m.fromStaff ? 'BOT' : 'USER',
+          sender: m.sender === 'STAFF' || m.fromStaff ? 'STAFF' : m.sender === 'BOT' ? 'BOT' : 'USER',
           text: m.text,
           time: m.createdAt
             ? new Date(m.createdAt).toLocaleTimeString('th-TH', {
@@ -329,7 +339,7 @@ function mapTicketToThread(projectId: string, t: any, msgs: any[]): ChatThread {
 
 export type ConversationsResult =
   | { changed: false; version: string }
-  | { changed: true; version: string; threads: ChatThread[] };
+  | { changed: true; version: string; threads: ConsoleChatThread[] };
 
 /**
  * โหลดห้องแชททั้งหมดในคำขอเดียว ส่ง version เดิมไปด้วยเพื่อให้ server ตอบสั้นๆ เมื่อไม่มีอะไรเปลี่ยน
@@ -352,9 +362,22 @@ export async function fetchProjectConversationsApi(
   return { changed: true, version: nextVersion, threads };
 }
 
-export async function fetchProjectThreadsApi(projectId: string): Promise<ChatThread[]> {
+export async function fetchProjectThreadsApi(projectId: string): Promise<ConsoleChatThread[]> {
   const result = await fetchProjectConversationsApi(projectId);
   return result.changed ? result.threads : readCachedThreads(projectId);
+}
+
+export async function sendProjectTicketReplyApi(
+  projectId: string,
+  ticketId: string,
+  text: string
+): Promise<void> {
+  await api.post(`/botnoi/projects/${projectId}/reply`, { ticketId, text });
+}
+
+export async function fetchBotnoiBotsApi(): Promise<{ configured: boolean; data?: unknown }> {
+  const res = await api.get('/botnoi/bots');
+  return { configured: Boolean(res.data?.configured), data: res.data?.data };
 }
 
 // ==========================================
